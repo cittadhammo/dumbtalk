@@ -1,0 +1,18 @@
+services:
+  cloudphone-signal:
+    build: .
+    image: cloudphone-signal:local
+    container_name: cloudphone-signal
+    restart: unless-stopped
+    environment:
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Set ADMIN_PASSWORD in .env}
+      SESSION_SECRET: ${SESSION_SECRET:?Set SESSION_SECRET in .env}
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:?Set PUBLIC_ORIGIN in .env}
+      DEVICE_NAME: ${DEVICE_NAME:-SigDumb}
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
+      SIGNAL_CLI_AUTO_UPDATE: ${SIGNAL_CLI_AUTO_UPDATE:-true}
+      SIGNAL_CLI_UPDATE_MIN_AGE_HOURS: ${SIGNAL_CLI_UPDATE_MIN_AGE_HOURS:-24}
+    volumes:
+      - ./data:/data
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:${HOST_PORT:-8787}:8080"
