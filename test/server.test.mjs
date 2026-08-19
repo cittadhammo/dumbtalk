@@ -51,6 +51,11 @@ test("requested messaging and conversation features remain wired", async () => {
   assert.match(client, /state\.view = "linking"/);
   assert.doesNotMatch(client, /id="cancel"/);
   assert.match(client, /function scrollFocusedMessage\(direction\)/);
+  assert.match(client, /Math\.max\(80, composeTop - headerBottom - 20\)/);
+  assert.match(client, /class="receipt-details scroll-focus focusable"/);
+  assert.match(client, /function toggleVoiceNote\(audio\)/);
+  assert.match(client, /const audio = document\.activeElement\.querySelector\("\.voice-note"\)/);
+  assert.doesNotMatch(client, /class="voice-note focusable"/);
   assert.match(client, /state\.view = "image-viewer"/);
   assert.match(client, /state\.view = "video-viewer"/);
   assert.match(client, /openVideoViewer\(video\.dataset\.videoSrc\)/);

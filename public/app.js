@@ -127,7 +127,7 @@ async function openConversation(id) {
 }
 function mediaHtml(message) {
   if (message.viewOnce) return message.viewOnceOpened ? `<span class="view-once opened">◉ View-once media opened</span>` : `<button class="view-once focusable" data-view-once="${escapeHtml(message.id)}">◉ Open view-once media</button>`;
-  return (message.attachments || []).map((attachment, index) => { const src = `/api/attachment/${encodeURIComponent(message.id)}/${index}`; if (attachment.contentType?.startsWith("image/")) return `<img class="media" src="${src}" alt="${escapeHtml(attachment.caption || "Photo")}" loading="lazy">`; if (attachment.contentType?.startsWith("video/")) return `<span class="video-thumb" data-video-src="${src}"><video class="media" src="${src}" preload="metadata" muted playsinline></video><span class="play-icon">▶</span></span>`; if (attachment.contentType?.startsWith("audio/")) return `<span class="voice-label">◉ Voice note</span><audio class="voice-note focusable" src="${src}" controls preload="metadata"></audio>`; return ""; }).join("");
+  return (message.attachments || []).map((attachment, index) => { const src = `/api/attachment/${encodeURIComponent(message.id)}/${index}`; if (attachment.contentType?.startsWith("image/")) return `<img class="media" src="${src}" alt="${escapeHtml(attachment.caption || "Photo")}" loading="lazy">`; if (attachment.contentType?.startsWith("video/")) return `<span class="video-thumb" data-video-src="${src}"><video class="media" src="${src}" preload="metadata" muted playsinline></video><span class="play-icon">▶</span></span>`; if (attachment.contentType?.startsWith("audio/")) return `<span class="voice-label">▶ Voice note</span><audio class="voice-note" src="${src}" controls preload="metadata"></audio>`; return ""; }).join("");
 }
 function openImageViewer(src, alt = "Photo", timestamp = null) {
   state.roomScroll = app.scrollTop;
@@ -199,6 +199,7 @@ function renderRoom(payload) {
   document.querySelectorAll("[data-message-time]").forEach(button => button.addEventListener("click", () => messageActions(Number(button.dataset.messageTime))));
   document.querySelectorAll("img.media").forEach(image => image.addEventListener("click", event => { event.stopPropagation(); openImageViewer(image.src, image.alt, Number(image.closest("[data-message-time]")?.dataset.messageTime)); }));
   document.querySelectorAll(".video-thumb").forEach(wrapper => wrapper.addEventListener("click", event => { event.stopPropagation(); openVideoViewer(wrapper.dataset.videoSrc); }));
+  document.querySelectorAll(".voice-note").forEach(audio => { audio.addEventListener("click", event => event.stopPropagation()); audio.addEventListener("play", () => updateVoiceNote(audio)); audio.addEventListener("pause", () => updateVoiceNote(audio)); audio.addEventListener("ended", () => updateVoiceNote(audio)); });
   document.querySelectorAll(".spoiler").forEach(element => element.addEventListener("click", event => { event.stopPropagation(); element.classList.toggle("revealed"); }));
   document.querySelectorAll("[data-view-once]").forEach(button => button.addEventListener("click", event => { event.stopPropagation(); openViewOnce(button); }));
   document.querySelectorAll("[data-poll-time]").forEach(button => button.addEventListener("click", event => { event.stopPropagation(); votePoll(Number(button.dataset.pollTime), Number(button.dataset.option)); }));
@@ -255,7 +256,7 @@ function messageActions(timestamp) {
   const edit = message.direction === "out" ? `<button id="edit-message" class="action menu-action focusable"><span class="menu-icon">✎</span><span>Edit</span></button><button id="delete-message" class="action menu-action danger focusable"><span class="menu-icon">⌫</span><span>Delete for everyone</span></button>` : "";
   const receiptRows = Object.values(message.receipts || {}).sort((a, b) => Number(b.at || 0) - Number(a.at || 0)).map(item => { const label = item.status === "viewed" ? "Viewed" : item.status === "read" ? "Read" : "Delivered"; return `<li><strong>${escapeHtml(item.name)}</strong><span>${label} at ${escapeHtml(receiptTime(item.at))}</span></li>`; }).join("");
   const reactionRows = (message.reactions || []).slice().sort((a, b) => String(a.author || a.authorId || "").localeCompare(String(b.author || b.authorId || ""))).map(item => `<li><strong>${escapeHtml(item.author || item.authorId || "Unknown")}</strong><span class="reaction-detail">Reacted ${escapeHtml(item.emoji)}</span></li>`).join("");
-  const messageDetails = receiptRows || reactionRows ? `<details class="receipt-details" open><summary>Message details</summary>${reactionRows ? `<p class="detail-label">Reactions</p><ul class="receipt-list">${reactionRows}</ul>` : ""}${receiptRows ? `<p class="detail-label">Delivery</p><ul class="receipt-list">${receiptRows}</ul>` : ""}</details>` : "";
+  const messageDetails = receiptRows || reactionRows ? `<section class="receipt-details scroll-focus focusable" tabindex="0" aria-label="Message details"><strong class="details-title">Message details</strong>${reactionRows ? `<p class="detail-label">Reactions</p><ul class="receipt-list">${reactionRows}</ul>` : ""}${receiptRows ? `<p class="detail-label">Delivery</p><ul class="receipt-list">${receiptRows}</ul>` : ""}</section>` : "";
   const favourites = favouriteReactions();
   screen("Message options", `<div class="menu-list"><div class="message-info"><strong>${escapeHtml(message.direction === "out" ? "You" : message.sender)}</strong><time>${escapeHtml(new Date(message.timestamp).toLocaleString())}</time></div><button id="reply-message" class="action menu-action focusable"><span class="menu-icon">↩</span><span>Reply</span></button><button id="pin-message" class="action menu-action focusable"><span class="menu-icon">⌖</span><span>${message.pinned ? "Unpin" : "Pin"} message</span></button>${message.poll && message.direction === "out" && !message.poll.closed ? `<button id="close-poll" class="action menu-action focusable"><span class="menu-icon">■</span><span>Close poll</span></button>` : ""}<p class="section-label">Quick reaction</p><div class="emoji-row">${QUICK_REACTIONS.map(emoji => `<button class="emoji focusable" data-emoji="${emoji}">${emoji}</button>`).join("")}</div>${favourites.length ? `<p class="section-label">Your frequent reactions</p><div class="emoji-row">${favourites.map(emoji => `<button class="emoji focusable" data-emoji="${emoji}">${emoji}</button>`).join("")}</div>` : ""}<button id="more-reactions" class="action menu-action focusable"><span class="menu-icon">☺</span><span>More reactions…</span><span class="chevron">›</span></button>${edit}${messageDetails}<p id="action-error" class="error"></p></div>`);
   setSoftkeys("", "Select", "Back");
@@ -429,14 +430,25 @@ async function sendVoiceNote() {
 }
 
 function moveFocus(direction) { const items = [...document.querySelectorAll(".focusable:not(:disabled)")]; if (!items.length) return; const index = Math.max(0, items.indexOf(document.activeElement)); items[(index + direction + items.length) % items.length].focus(); document.activeElement.scrollIntoView({ block: "nearest" }); }
+function updateVoiceNote(audio) {
+  const label = audio.closest("[data-message-time]")?.querySelector(".voice-label");
+  if (label) label.textContent = audio.paused ? "▶ Voice note" : "❚❚ Playing voice note";
+  if (document.activeElement?.closest?.("[data-message-time]")?.contains(audio)) setSoftkeys("Message", audio.paused ? "Play" : "Pause", "Back");
+}
+function toggleVoiceNote(audio) {
+  document.querySelectorAll(".voice-note").forEach(other => { if (other !== audio && !other.paused) other.pause(); });
+  if (audio.paused) audio.play().catch(() => {}); else audio.pause();
+}
 function scrollFocusedMessage(direction) {
-  const message = document.activeElement?.closest?.("[data-message-time]");
-  if (!message || state.view !== "room") return false;
-  const rect = message.getBoundingClientRect();
+  const focused = document.activeElement;
+  const panel = state.view === "room" ? focused?.closest?.("[data-message-time]") : focused?.closest?.(".scroll-focus");
+  if (!panel) return false;
+  const rect = panel.getBoundingClientRect();
   const headerBottom = document.querySelector("header")?.getBoundingClientRect().bottom || app.getBoundingClientRect().top;
   const composeTop = document.querySelector(".compose")?.getBoundingClientRect().top || app.getBoundingClientRect().bottom;
-  if (direction > 0 && rect.bottom > composeTop + 1) { app.scrollBy({ top: Math.min(52, rect.bottom - composeTop) }); return true; }
-  if (direction < 0 && rect.top < headerBottom - 1) { app.scrollBy({ top: -Math.min(52, headerBottom - rect.top) }); return true; }
+  const page = Math.max(80, composeTop - headerBottom - 20);
+  if (direction > 0 && rect.bottom > composeTop + 1) { app.scrollBy({ top: Math.min(page, rect.bottom - composeTop) }); return true; }
+  if (direction < 0 && rect.top < headerBottom - 1) { app.scrollBy({ top: -Math.min(page, headerBottom - rect.top) }); return true; }
   return false;
 }
 function moveEmoji(horizontal, vertical) {
@@ -490,7 +502,7 @@ window.addEventListener("keydown", event => {
   if (event.repeat && ["ShiftLeft", "ShiftRight"].includes(event.code)) return;
   if (event.key === "Enter" && state.view === "video-viewer") { event.preventDefault(); const video = document.querySelector(".video-viewer video"); return video.paused ? video.play() : video.pause(); }
   if (state.view === "video-viewer" && ["ArrowLeft", "ArrowRight"].includes(event.key)) { event.preventDefault(); const video = document.querySelector(".video-viewer video"); video.currentTime = Math.max(0, Math.min(video.duration || Infinity, video.currentTime + (event.key === "ArrowLeft" ? -10 : 10))); return; }
-  if (event.key === "Enter" && document.activeElement?.matches("[data-message-time]")) { event.preventDefault(); const image = document.activeElement.querySelector("img.media"); if (image) return openImageViewer(image.src, image.alt, Number(document.activeElement.dataset.messageTime)); const video = document.activeElement.querySelector(".video-thumb"); if (video) return openVideoViewer(video.dataset.videoSrc); return messageActions(Number(document.activeElement.dataset.messageTime)); }
+  if (event.key === "Enter" && document.activeElement?.matches("[data-message-time]")) { event.preventDefault(); const image = document.activeElement.querySelector("img.media"); if (image) return openImageViewer(image.src, image.alt, Number(document.activeElement.dataset.messageTime)); const video = document.activeElement.querySelector(".video-thumb"); if (video) return openVideoViewer(video.dataset.videoSrc); const audio = document.activeElement.querySelector(".voice-note"); if (audio) return toggleVoiceNote(audio); return messageActions(Number(document.activeElement.dataset.messageTime)); }
   if (event.key === "Enter" && document.activeElement?.matches(".spoiler")) { event.preventDefault(); document.activeElement.classList.toggle("revealed"); return; }
   if (state.view === "pinned-view" && ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) {
     event.preventDefault();
@@ -512,6 +524,7 @@ window.addEventListener("back", event => { event.preventDefault(); softRight(); 
 document.addEventListener("focusin", event => {
   if (state.view !== "room") return;
   const message = event.target.closest?.("[data-message-time]");
-  setSoftkeys(message ? "Message" : "Options", message?.querySelector("img.media, .video-thumb") ? "Open" : message ? "Select" : "Type", "Back");
+  const audio = message?.querySelector(".voice-note");
+  setSoftkeys(message ? "Message" : "Options", audio ? (audio.paused ? "Play" : "Pause") : message?.querySelector("img.media, .video-thumb") ? "Open" : message ? "Select" : "Type", "Back");
 });
 boot();
