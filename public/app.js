@@ -131,12 +131,14 @@ function mediaHtml(message) {
 }
 function openImageViewer(src, alt = "Photo", timestamp = null) {
   state.roomScroll = app.scrollTop;
+  state.returnFocusTimestamp = timestamp;
   state.view = "image-viewer";
   app.innerHTML = `<section class="image-viewer"><img src="${src}" alt="${escapeHtml(alt)}"></section>`;
   setSoftkeys("", "", "Back");
 }
-function openVideoViewer(src) {
+function openVideoViewer(src, timestamp = null) {
   state.roomScroll = app.scrollTop;
+  state.returnFocusTimestamp = timestamp;
   state.view = "video-viewer";
   app.innerHTML = `<section class="video-viewer"><video src="${escapeHtml(src)}" controls autoplay playsinline></video></section>`;
   setSoftkeys("", "Play/Pause", "Back");
@@ -198,7 +200,7 @@ function renderRoom(payload) {
   document.querySelector("#cancel-reply")?.addEventListener("click", () => { state.replying = null; renderRoom(payload); });
   document.querySelectorAll("[data-message-time]").forEach(button => button.addEventListener("click", () => messageActions(Number(button.dataset.messageTime))));
   document.querySelectorAll("img.media").forEach(image => image.addEventListener("click", event => { event.stopPropagation(); openImageViewer(image.src, image.alt, Number(image.closest("[data-message-time]")?.dataset.messageTime)); }));
-  document.querySelectorAll(".video-thumb").forEach(wrapper => wrapper.addEventListener("click", event => { event.stopPropagation(); openVideoViewer(wrapper.dataset.videoSrc); }));
+  document.querySelectorAll(".video-thumb").forEach(wrapper => wrapper.addEventListener("click", event => { event.stopPropagation(); openVideoViewer(wrapper.dataset.videoSrc, Number(wrapper.closest("[data-message-time]")?.dataset.messageTime)); }));
   document.querySelectorAll(".voice-note").forEach(audio => { audio.addEventListener("click", event => event.stopPropagation()); audio.addEventListener("play", () => updateVoiceNote(audio)); audio.addEventListener("pause", () => updateVoiceNote(audio)); audio.addEventListener("ended", () => updateVoiceNote(audio)); });
   document.querySelectorAll(".spoiler").forEach(element => element.addEventListener("click", event => { event.stopPropagation(); element.classList.toggle("revealed"); }));
   document.querySelectorAll("[data-view-once]").forEach(button => button.addEventListener("click", event => { event.stopPropagation(); openViewOnce(button); }));
@@ -429,7 +431,30 @@ async function sendVoiceNote() {
   catch (error) { button.disabled = false; actionError(error); }
 }
 
-function moveFocus(direction) { const items = [...document.querySelectorAll(".focusable:not(:disabled)")]; if (!items.length) return; const index = Math.max(0, items.indexOf(document.activeElement)); items[(index + direction + items.length) % items.length].focus(); document.activeElement.scrollIntoView({ block: "nearest" }); }
+function messageViewport() {
+  const appRect = app.getBoundingClientRect();
+  return {
+    top: document.querySelector("header")?.getBoundingClientRect().bottom || appRect.top,
+    bottom: document.querySelector(".compose")?.getBoundingClientRect().top || appRect.bottom,
+  };
+}
+function frameFocusedItem(target, direction) {
+  const message = state.view === "room" ? target.closest?.("[data-message-time]") : null;
+  if (!message) return target.scrollIntoView({ block: "nearest" });
+  const viewport = messageViewport();
+  const rect = message.getBoundingClientRect();
+  const available = viewport.bottom - viewport.top;
+  if (rect.height <= available) {
+    if (rect.top < viewport.top) app.scrollBy({ top: rect.top - viewport.top });
+    else if (rect.bottom > viewport.bottom) app.scrollBy({ top: rect.bottom - viewport.bottom });
+  } else if (direction > 0) app.scrollBy({ top: rect.top - viewport.top });
+  else app.scrollBy({ top: rect.bottom - viewport.bottom });
+}
+function moveFocus(direction) {
+  const items = [...document.querySelectorAll(".focusable:not(:disabled)")]; if (!items.length) return;
+  const index = items.indexOf(document.activeElement); const target = items[(Math.max(0, index) + direction + items.length) % items.length];
+  target.focus({ preventScroll: true }); frameFocusedItem(target, direction);
+}
 function updateVoiceNote(audio) {
   const label = audio.closest("[data-message-time]")?.querySelector(".voice-label");
   if (label) label.textContent = audio.paused ? "▶ Voice note" : "❚❚ Playing voice note";
@@ -444,11 +469,10 @@ function scrollFocusedMessage(direction) {
   const panel = state.view === "room" ? focused?.closest?.("[data-message-time]") : focused?.closest?.(".scroll-focus");
   if (!panel) return false;
   const rect = panel.getBoundingClientRect();
-  const headerBottom = document.querySelector("header")?.getBoundingClientRect().bottom || app.getBoundingClientRect().top;
-  const composeTop = document.querySelector(".compose")?.getBoundingClientRect().top || app.getBoundingClientRect().bottom;
-  const page = Math.max(80, composeTop - headerBottom - 20);
-  if (direction > 0 && rect.bottom > composeTop + 1) { app.scrollBy({ top: Math.min(page, rect.bottom - composeTop) }); return true; }
-  if (direction < 0 && rect.top < headerBottom - 1) { app.scrollBy({ top: -Math.min(page, headerBottom - rect.top) }); return true; }
+  const viewport = messageViewport();
+  const page = Math.max(120, viewport.bottom - viewport.top - 8);
+  if (direction > 0 && rect.bottom > viewport.bottom + 1) { app.scrollBy({ top: Math.min(page, rect.bottom - viewport.bottom) }); return true; }
+  if (direction < 0 && rect.top < viewport.top - 1) { app.scrollBy({ top: -Math.min(page, viewport.top - rect.top) }); return true; }
   return false;
 }
 function moveEmoji(horizontal, vertical) {
@@ -502,7 +526,7 @@ window.addEventListener("keydown", event => {
   if (event.repeat && ["ShiftLeft", "ShiftRight"].includes(event.code)) return;
   if (event.key === "Enter" && state.view === "video-viewer") { event.preventDefault(); const video = document.querySelector(".video-viewer video"); return video.paused ? video.play() : video.pause(); }
   if (state.view === "video-viewer" && ["ArrowLeft", "ArrowRight"].includes(event.key)) { event.preventDefault(); const video = document.querySelector(".video-viewer video"); video.currentTime = Math.max(0, Math.min(video.duration || Infinity, video.currentTime + (event.key === "ArrowLeft" ? -10 : 10))); return; }
-  if (event.key === "Enter" && document.activeElement?.matches("[data-message-time]")) { event.preventDefault(); const image = document.activeElement.querySelector("img.media"); if (image) return openImageViewer(image.src, image.alt, Number(document.activeElement.dataset.messageTime)); const video = document.activeElement.querySelector(".video-thumb"); if (video) return openVideoViewer(video.dataset.videoSrc); const audio = document.activeElement.querySelector(".voice-note"); if (audio) return toggleVoiceNote(audio); return messageActions(Number(document.activeElement.dataset.messageTime)); }
+  if (event.key === "Enter" && document.activeElement?.matches("[data-message-time]")) { event.preventDefault(); const timestamp = Number(document.activeElement.dataset.messageTime); const image = document.activeElement.querySelector("img.media"); if (image) return openImageViewer(image.src, image.alt, timestamp); const video = document.activeElement.querySelector(".video-thumb"); if (video) return openVideoViewer(video.dataset.videoSrc, timestamp); const audio = document.activeElement.querySelector(".voice-note"); if (audio) return toggleVoiceNote(audio); return messageActions(timestamp); }
   if (event.key === "Enter" && document.activeElement?.matches(".spoiler")) { event.preventDefault(); document.activeElement.classList.toggle("revealed"); return; }
   if (state.view === "pinned-view" && ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) {
     event.preventDefault();
