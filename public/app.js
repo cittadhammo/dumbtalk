@@ -78,12 +78,19 @@ function maybeMindfulPause() {
   }
   saveMindfulUsage(); if (reason) showMindfulPause(reason);
 }
+function pauseMindfulRefresh() { if (refreshTimer) { stopRefresh(); state.mindfulRefreshPaused = true; } }
+function resumeMindfulRefresh() {
+  if (!state.mindfulRefreshPaused) return;
+  state.mindfulRefreshPaused = false;
+  if (state.view === "conversations") refreshTimer = setInterval(() => state.view === "conversations" && conversations(document.activeElement?.dataset.id, state.showingArchived).catch(() => {}), 3000);
+  if (state.view === "room") refreshTimer = setInterval(() => state.view === "room" && refreshRoom(), 2500);
+}
 function showMindfulPause(reason) {
-  state.mindfulPause = true; state.mindfulReturnFocus = document.activeElement;
+  pauseMindfulRefresh(); state.mindfulPause = true; state.mindfulReturnFocus = document.activeElement;
   app.insertAdjacentHTML("beforeend", `<section class="mindful-pause" role="dialog" aria-modal="true"><div><span class="mindful-icon">◷</span><h2>A quick pause</h2><p>${escapeHtml(reason)}</p><p class="hint">Open with intention, then carry on.</p><button id="mindful-continue" class="action primary focusable">Continue</button></div></section>`);
   setSoftkeys("", "Continue", "Exit"); const continueButton = document.querySelector("#mindful-continue"); continueButton.addEventListener("click", dismissMindfulPause); requestAnimationFrame(() => continueButton.focus());
 }
-function dismissMindfulPause() { state.mindfulPause = false; document.querySelector(".mindful-pause")?.remove(); state.mindfulReturnFocus?.focus?.({ preventScroll: true }); state.mindfulReturnFocus = null; }
+function dismissMindfulPause() { state.mindfulPause = false; document.querySelector(".mindful-pause")?.remove(); state.mindfulReturnFocus?.focus?.({ preventScroll: true }); state.mindfulReturnFocus = null; resumeMindfulRefresh(); }
 function screen(title, content, className = "") { const heading = title === "SigDumb" ? `<span class="brand-title"><img src="/sigdumb.png" alt="">SigDumb</span>` : escapeHtml(title); app.innerHTML = `<section class="screen ${className}"><header>${heading}${usageBadge()}</header>${content}</section>`; app.scrollTop = 0; }
 function actionError(error) { const target = document.querySelector("#action-error"); if (target) target.textContent = error.message; }
 
