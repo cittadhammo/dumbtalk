@@ -5,6 +5,10 @@ let refreshTimer;
 let typingTimer;
 let typingActive = false;
 let activeRecording = null;
+const MINDFUL_KEY = "sigdumb-mindful-usage-v1";
+const MINDFUL_LAUNCH_GAP = 90_000;
+const MINDFUL_BURST_WINDOW = 45 * 60_000;
+const MINDFUL_TIME_THRESHOLDS = [15, 25];
 const QUICK_REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
 const EMOJI_GROUPS = {
   Faces: "😀 😃 😄 😁 😆 😅 🤣 😂 🙂 🙃 😉 😊 😇 🥰 😍 🤩 😘 😗 ☺️ 😚 😋 😛 😜 🤪 🤨 🧐 🤓 😎 🥳 😏 😒 😞 😔 😟 😕 🙁 ☹️ 😣 😖 😫 😩 🥺 😢 😭 😤 😠 😡 🤬 🤯 😳 🥵 🥶 😱 😨 😰 😥 🤗 🤔 🫣 🤭 🫢 🤫 🤥 😶 😐 😑 😬 🙄 😯 😦 😧 😮 😲 🥱 😴 🤤 😪 😵 🤐 🥴 🤢 🤮 🤧 😷 🤒 🤕",
@@ -31,7 +35,56 @@ function receiptTime(value) {
   return date.toLocaleString([], sameDay ? { hour: "2-digit", minute: "2-digit" } : { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 }
 function stopRefresh() { clearInterval(refreshTimer); }
-function screen(title, content, className = "") { const heading = title === "SigDumb" ? `<span class="brand-title"><img src="/sigdumb.png" alt="">SigDumb</span>` : escapeHtml(title); app.innerHTML = `<section class="screen ${className}"><header>${heading}</header>${content}</section>`; app.scrollTop = 0; }
+function usageDay() { return new Date().toLocaleDateString("en-CA"); }
+function loadMindfulUsage() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(MINDFUL_KEY) || "{}");
+    if (saved.day === usageDay()) return { day: saved.day, checks: Number(saved.checks) || 0, activeMs: Number(saved.activeMs) || 0, launches: Array.isArray(saved.launches) ? saved.launches : [], nudges: saved.nudges || {}, lastLaunch: Number(saved.lastLaunch) || 0 };
+  } catch {}
+  return { day: usageDay(), checks: 0, activeMs: 0, launches: [], nudges: {}, lastLaunch: 0 };
+}
+function saveMindfulUsage() { if (state.mindful) localStorage.setItem(MINDFUL_KEY, JSON.stringify(state.mindful)); }
+function usageLabel() { const usage = state.mindful; if (!usage) return ""; return `${usage.checks} check${usage.checks === 1 ? "" : "s"} · ${Math.floor(usage.activeMs / 60_000)}m`; }
+function usageBadge() { return state.mindful ? `<span class="usage-tally" aria-label="Today's usage">${escapeHtml(usageLabel())}</span>` : ""; }
+function refreshUsageBadge() { document.querySelectorAll(".usage-tally").forEach(node => { node.textContent = usageLabel(); }); }
+function startMindfulSession() {
+  if (state.mindfulStarted) return;
+  state.mindfulStarted = true; state.mindful = loadMindfulUsage();
+  const now = Date.now();
+  if (!state.mindful.lastLaunch || now - state.mindful.lastLaunch >= MINDFUL_LAUNCH_GAP) { state.mindful.checks++; state.mindful.launches.push(now); state.mindful.openedNow = true; }
+  state.mindful.lastLaunch = now; state.mindful.launches = state.mindful.launches.filter(time => now - time < 24 * 60 * 60_000); state.mindful.lastTick = now; state.mindfulVisible = !document.hidden;
+  saveMindfulUsage(); clearInterval(state.mindfulTimer); state.mindfulTimer = setInterval(updateMindfulTime, 15_000);
+}
+function updateMindfulTime() {
+  const usage = state.mindful; if (!usage) return;
+  const now = Date.now(); const elapsed = Math.max(0, now - (usage.lastTick || now)); usage.lastTick = now;
+  if (state.mindfulVisible !== false && !state.mindfulPause) usage.activeMs += elapsed;
+  saveMindfulUsage(); refreshUsageBadge(); maybeMindfulPause();
+}
+function mindfulReason() {
+  const usage = state.mindful; if (!usage || !usage.openedNow) return "";
+  usage.openedNow = false;
+  const now = Date.now(); const recent = usage.launches.filter(time => now - time <= MINDFUL_BURST_WINDOW).length;
+  if (recent >= 2 && (!usage.nudges.lastBurst || now - usage.nudges.lastBurst >= MINDFUL_BURST_WINDOW)) { usage.nudges.lastBurst = now; return "This is your second check in 45 minutes."; }
+  if ([4, 6, 9].includes(usage.checks) && !usage.nudges[`checks-${usage.checks}`]) { usage.nudges[`checks-${usage.checks}`] = true; return `This is check ${usage.checks} today.`; }
+  return "";
+}
+function maybeMindfulPause() {
+  if (!state.mindful || state.mindfulPause) return;
+  let reason = mindfulReason();
+  for (const minutes of MINDFUL_TIME_THRESHOLDS) {
+    const key = `minutes-${minutes}`;
+    if (!reason && state.mindful.activeMs >= minutes * 60_000 && !state.mindful.nudges[key]) { state.mindful.nudges[key] = true; reason = `You've spent ${minutes} minutes here today.`; }
+  }
+  saveMindfulUsage(); if (reason) showMindfulPause(reason);
+}
+function showMindfulPause(reason) {
+  state.mindfulPause = true; state.mindfulReturnFocus = document.activeElement;
+  app.insertAdjacentHTML("beforeend", `<section class="mindful-pause" role="dialog" aria-modal="true"><div><span class="mindful-icon">◷</span><h2>A quick pause</h2><p>${escapeHtml(reason)}</p><p class="hint">Open with intention, then carry on.</p><button id="mindful-continue" class="action primary focusable">Continue</button></div></section>`);
+  setSoftkeys("", "Continue", "Exit"); document.querySelector("#mindful-continue").addEventListener("click", dismissMindfulPause); focusFirst();
+}
+function dismissMindfulPause() { state.mindfulPause = false; document.querySelector(".mindful-pause")?.remove(); state.mindfulReturnFocus?.focus?.({ preventScroll: true }); state.mindfulReturnFocus = null; }
+function screen(title, content, className = "") { const heading = title === "SigDumb" ? `<span class="brand-title"><img src="/sigdumb.png" alt="">SigDumb</span>` : escapeHtml(title); app.innerHTML = `<section class="screen ${className}"><header>${heading}${usageBadge()}</header>${content}</section>`; app.scrollTop = 0; }
 function actionError(error) { const target = document.querySelector("#action-error"); if (target) target.textContent = error.message; }
 
 function login(message = "") {
@@ -48,7 +101,7 @@ async function boot() {
     const status = await request("/api/status"); state.settings = status.settings || {}; state.capabilities = status.capabilities || {}; state.signalCli = status.signalCli || {};
     if (!status.signalReady) return setTimeout(boot, 1500);
     if (!status.linked) return linkScreen();
-    await conversations();
+    startMindfulSession(); await conversations(); maybeMindfulPause();
   } catch (error) {
     if (error.status === 401) return login();
     app.innerHTML = `<section class="center"><p class="error">${escapeHtml(error.message)}</p><button id="retry" class="action focusable">Retry</button></section>`;
@@ -512,11 +565,13 @@ function back() {
 }
 function exitApp() { if (history.length > 1) history.back(); else window.close(); }
 function softLeft() {
+  if (state.mindfulPause) return dismissMindfulPause();
   if (state.view === "login") return document.querySelector("#login-form")?.requestSubmit();
   if (state.view === "conversations") return mainMenu();
   if (state.view === "room") { const message = document.activeElement?.closest?.("[data-message-time]"); return message ? messageActions(Number(message.dataset.messageTime)) : chatOptions(); }
 }
 function softRight() {
+  if (state.mindfulPause) return exitApp();
   if (state.view === "linking") return linkScreen();
   if (["login", "link"].includes(state.view) || (state.view === "conversations" && !state.showingArchived)) return exitApp();
   return back();
@@ -545,6 +600,8 @@ window.addEventListener("keydown", event => {
   if ((event.key === "Backspace" || event.key === "Call") && state.view === "room" && (!event.target.matches("input") || !event.target.value)) { event.preventDefault(); back(); }
 });
 window.addEventListener("back", event => { event.preventDefault(); softRight(); });
+document.addEventListener("visibilitychange", () => { updateMindfulTime(); if (state.mindful) { state.mindfulVisible = !document.hidden; state.mindful.lastTick = Date.now(); } });
+window.addEventListener("pagehide", updateMindfulTime);
 document.addEventListener("focusin", event => {
   if (state.view !== "room") return;
   const message = event.target.closest?.("[data-message-time]");
