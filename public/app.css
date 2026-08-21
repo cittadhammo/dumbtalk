@@ -19,8 +19,9 @@ body{background:radial-gradient(circle at top,#17352b 0,#0b1713 38%)}header{heig
 .room-typing span{display:inline-block;width:5px;height:5px;margin:0 1px;border-radius:50%;background:#c5d7d0;animation:typing-dot .9s infinite ease-in-out}
 .room-typing span:nth-child(2){animation-delay:.15s}.room-typing span:nth-child(3){animation-delay:.3s}
 @keyframes typing-dot{0%,60%,100%{transform:translateY(0);opacity:.45}30%{transform:translateY(-4px);opacity:1}}
-.image-viewer{display:grid;width:100%;height:100%;padding:4px;place-items:center;background:#000}
+.image-viewer{display:grid;width:100%;height:100%;padding:4px;place-items:center;background:#000;overflow:hidden}
 .image-viewer img{display:block;width:100%;height:100%;object-fit:contain}
+.image-viewer.zoomed{display:block;padding:0;overflow:auto}.image-viewer.zoomed img{width:100%;height:auto;max-width:none;object-fit:initial}
 .native-record{position:relative;overflow:hidden}
 .native-record input{position:absolute;inset:0;width:100%;height:100%;opacity:.01;cursor:pointer}
 .native-record:focus-within{outline:3px solid var(--focus);outline-offset:-3px}
@@ -41,6 +42,8 @@ body{background:radial-gradient(circle at top,#17352b 0,#0b1713 38%)}header{heig
 .room-screen .compose button{width:35px;font-size:14px}
 .room-screen .replying{bottom:35px;padding:3px 6px}
 .room-screen .media{max-height:210px;margin-bottom:3px}
+.room-screen .media.photo{height:210px;max-height:210px;object-fit:contain}
+.media-unavailable{display:block;margin:3px 0;padding:8px;color:var(--muted);font-size:12px;text-align:center;border:1px solid var(--line);border-radius:5px}
 .brand-title{display:flex;align-items:center;gap:7px}.brand-title img{width:25px;height:25px;border-radius:6px}
 .brand-logo{display:block;width:68px;height:68px;margin:0 auto 7px;border-radius:15px;box-shadow:0 4px 14px #0008}
 .login-screen{padding:10px}.login-screen h1{margin:2px 0;font-size:24px}.login-screen .hint{margin:1px 0 5px}.login-screen .field{margin:6px 0;padding:8px}.login-screen .error{min-height:16px;margin:4px 0;font-size:12px}

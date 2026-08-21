@@ -6,11 +6,14 @@ let typingTimer;
 let typingActive = false;
 let activeRecording = null;
 let protectedObjectUrls = [];
+let protectedFetches = 0;
+const protectedFetchQueue = [];
 const MINDFUL_KEY = "sigdumb-mindful-usage-v1";
 const MINDFUL_LAUNCH_GAP = 90_000;
 const MINDFUL_BURST_WINDOW = 45 * 60_000;
 const MINDFUL_TIME_THRESHOLDS = [15, 25];
 const WIDGET_TOKEN = new URL(location.href).hash.slice(1);
+const MEDIA_PLACEHOLDER = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==";
 const QUICK_REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
 const EMOJI_GROUPS = {
   Faces: "😀 😃 😄 😁 😆 😅 🤣 😂 🙂 🙃 😉 😊 😇 🥰 😍 🤩 😘 😗 ☺️ 😚 😋 😛 😜 🤪 🤨 🧐 🤓 😎 🥳 😏 😒 😞 😔 😟 😕 🙁 ☹️ 😣 😖 😫 😩 🥺 😢 😭 😤 😠 😡 🤬 🤯 😳 🥵 🥶 😱 😨 😰 😥 🤗 🤔 🫣 🤭 🫢 🤫 🤥 😶 😐 😑 😬 🙄 😯 😦 😧 😮 😲 🥱 😴 🤤 😪 😵 🤐 🥴 🤢 🤮 🤧 😷 🤒 🤕",
@@ -28,15 +31,31 @@ async function request(path, options = {}) {
 }
 function escapeHtml(value) { return String(value ?? "").replace(/[&<>"']/g, character => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character]); }
 function clearProtectedMedia() { protectedObjectUrls.forEach(url => URL.revokeObjectURL(url)); protectedObjectUrls = []; }
+function queueProtectedFetch(task) {
+  return new Promise((resolve, reject) => {
+    const run = () => {
+      protectedFetches++;
+      task().then(resolve, reject).finally(() => { protectedFetches--; protectedFetchQueue.shift()?.(); });
+    };
+    if (protectedFetches < 3) run(); else protectedFetchQueue.push(run);
+  });
+}
+function wait(milliseconds) { return new Promise(resolve => setTimeout(resolve, milliseconds)); }
 async function protectedBlobUrl(path) {
-  const response = await fetch(path, { headers: { authorization: `Bearer ${WIDGET_TOKEN}` } });
-  if (!response.ok) throw new Error("Media unavailable");
-  const url = URL.createObjectURL(await response.blob()); protectedObjectUrls.push(url); return url;
+  let failure;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const response = await queueProtectedFetch(() => fetch(path, { cache: "no-store", headers: { authorization: `Bearer ${WIDGET_TOKEN}` } }));
+      if (!response.ok) throw new Error(`Media unavailable (${response.status})`);
+      const url = URL.createObjectURL(await response.blob()); protectedObjectUrls.push(url); return url;
+    } catch (error) { failure = error; if (attempt < 2) await wait(350 * (attempt + 1)); }
+  }
+  throw failure;
 }
 function hydrateProtectedMedia(root = document) {
   root.querySelectorAll?.("[data-protected-src]").forEach(async element => {
     try { const src = await protectedBlobUrl(element.dataset.protectedSrc); if (element.isConnected) { element.src = src; if (element.matches(".video-viewer video")) element.play().catch(() => {}); } }
-    catch { element.closest(".avatar")?.querySelector("img")?.remove(); }
+    catch { if (element.closest(".avatar")) element.remove(); else element.replaceWith(Object.assign(document.createElement("span"), { className: "media-unavailable", textContent: "Media unavailable" })); }
   });
 }
 function focusFirst() { requestAnimationFrame(() => document.querySelector(".focusable")?.focus()); }
@@ -201,14 +220,19 @@ async function openConversation(id) {
 }
 function mediaHtml(message) {
   if (message.viewOnce) return message.viewOnceOpened ? `<span class="view-once opened">◉ View-once media opened</span>` : `<button class="view-once focusable" data-view-once="${escapeHtml(message.id)}">◉ Open view-once media</button>`;
-  return (message.attachments || []).map((attachment, index) => { const src = `/api/attachment/${encodeURIComponent(message.id)}/${index}`; if (attachment.contentType?.startsWith("image/")) return `<img class="media" data-protected-src="${src}" alt="${escapeHtml(attachment.caption || "Photo")}" loading="lazy">`; if (attachment.contentType?.startsWith("video/")) return `<span class="video-thumb" data-video-src="${src}"><video class="media" data-protected-src="${src}" preload="metadata" muted playsinline></video><span class="play-icon">▶</span></span>`; if (attachment.contentType?.startsWith("audio/")) return `<span class="voice-label">▶ Voice note</span><audio class="voice-note" data-protected-src="${src}" controls preload="metadata"></audio>`; return ""; }).join("");
+  return (message.attachments || []).map((attachment, index) => { const src = `/api/attachment/${encodeURIComponent(message.id)}/${index}`; if (attachment.contentType?.startsWith("image/")) return `<img class="media photo" src="${MEDIA_PLACEHOLDER}" data-protected-src="${src}" alt="${escapeHtml(attachment.caption || "Photo")}" loading="lazy">`; if (attachment.contentType?.startsWith("video/")) return `<span class="video-thumb" data-video-src="${src}"><video class="media" data-protected-src="${src}" preload="metadata" muted playsinline></video><span class="play-icon">▶</span></span>`; if (attachment.contentType?.startsWith("audio/")) return `<span class="voice-label">▶ Voice note</span><audio class="voice-note" data-protected-src="${src}" controls preload="metadata"></audio>`; return ""; }).join("");
 }
 function openImageViewer(src, alt = "Photo", timestamp = null) {
   state.roomScroll = app.scrollTop;
   state.returnFocusTimestamp = timestamp;
-  state.view = "image-viewer";
+  state.view = "image-viewer"; state.imageZoomed = false;
   clearProtectedMedia(); app.innerHTML = `<section class="image-viewer"><img ${src.startsWith("/api/") ? `data-protected-src="${src}"` : `src="${src}"`} alt="${escapeHtml(alt)}"></section>`; hydrateProtectedMedia(app);
-  setSoftkeys("", "", "Back");
+  setSoftkeys("", "Zoom", "Back");
+}
+function toggleImageZoom() {
+  const viewer = document.querySelector(".image-viewer"); if (!viewer) return;
+  state.imageZoomed = !state.imageZoomed; viewer.classList.toggle("zoomed", state.imageZoomed);
+  viewer.scrollTop = 0; setSoftkeys("", state.imageZoomed ? "Fit" : "Zoom", "Back");
 }
 function openVideoViewer(src, timestamp = null) {
   state.roomScroll = app.scrollTop;
@@ -273,7 +297,7 @@ function renderRoom(payload) {
   document.querySelector("#load-older")?.addEventListener("click", loadOlder);
   document.querySelector("#cancel-reply")?.addEventListener("click", () => { state.replying = null; renderRoom(payload); });
   document.querySelectorAll("[data-message-time]").forEach(button => button.addEventListener("click", () => messageActions(Number(button.dataset.messageTime))));
-  document.querySelectorAll("img.media").forEach(image => image.addEventListener("click", event => { event.stopPropagation(); openImageViewer(image.src, image.alt, Number(image.closest("[data-message-time]")?.dataset.messageTime)); }));
+  document.querySelectorAll("img.media").forEach(image => image.addEventListener("click", event => { event.stopPropagation(); openImageViewer(image.dataset.protectedSrc || image.src, image.alt, Number(image.closest("[data-message-time]")?.dataset.messageTime)); }));
   document.querySelectorAll(".video-thumb").forEach(wrapper => wrapper.addEventListener("click", event => { event.stopPropagation(); openVideoViewer(wrapper.dataset.videoSrc, Number(wrapper.closest("[data-message-time]")?.dataset.messageTime)); }));
   document.querySelectorAll(".voice-note").forEach(audio => { audio.addEventListener("click", event => event.stopPropagation()); audio.addEventListener("play", () => updateVoiceNote(audio)); audio.addEventListener("pause", () => updateVoiceNote(audio)); audio.addEventListener("ended", () => updateVoiceNote(audio)); });
   document.querySelectorAll(".spoiler").forEach(element => element.addEventListener("click", event => { event.stopPropagation(); element.classList.toggle("revealed"); }));
@@ -301,7 +325,7 @@ function multipleVoteScreen(message, initial) {
 }
 async function submitPollVote(poll, options) { await request("/api/poll/vote", { method: "POST", body: JSON.stringify({ kind: state.selected.kind, target: state.selected.target, timestamp: poll.timestamp, options }) }); await openConversation(state.selected.id); }
 async function openViewOnce(button) {
-  try { const payload = await request("/api/view-once/open", { method: "POST", body: JSON.stringify({ messageId: button.dataset.viewOnce }) }); const image = document.createElement("img"); image.className = "media"; image.dataset.protectedSrc = payload.url; image.alt = "View-once media"; button.replaceWith(image); hydrateProtectedMedia(app); }
+  try { const payload = await request("/api/view-once/open", { method: "POST", body: JSON.stringify({ messageId: button.dataset.viewOnce }) }); const image = document.createElement("img"); image.className = "media photo"; image.src = MEDIA_PLACEHOLDER; image.dataset.protectedSrc = payload.url; image.alt = "View-once media"; button.replaceWith(image); hydrateProtectedMedia(app); }
   catch (error) { alert(error.message); }
 }
 async function loadOlder() {
@@ -601,9 +625,11 @@ function softRight() {
 
 window.addEventListener("keydown", event => {
   if (event.repeat && ["ShiftLeft", "ShiftRight"].includes(event.code)) return;
+  if (event.key === "Enter" && state.view === "image-viewer") { event.preventDefault(); return toggleImageZoom(); }
+  if (state.view === "image-viewer" && ["ArrowUp", "ArrowDown"].includes(event.key)) { event.preventDefault(); if (state.imageZoomed) document.querySelector(".image-viewer")?.scrollBy({ top: event.key === "ArrowUp" ? -120 : 120, behavior: "smooth" }); return; }
   if (event.key === "Enter" && state.view === "video-viewer") { event.preventDefault(); const video = document.querySelector(".video-viewer video"); return video.paused ? video.play() : video.pause(); }
   if (state.view === "video-viewer" && ["ArrowLeft", "ArrowRight"].includes(event.key)) { event.preventDefault(); const video = document.querySelector(".video-viewer video"); video.currentTime = Math.max(0, Math.min(video.duration || Infinity, video.currentTime + (event.key === "ArrowLeft" ? -10 : 10))); return; }
-  if (event.key === "Enter" && document.activeElement?.matches("[data-message-time]")) { event.preventDefault(); const timestamp = Number(document.activeElement.dataset.messageTime); const image = document.activeElement.querySelector("img.media"); if (image) return openImageViewer(image.src, image.alt, timestamp); const video = document.activeElement.querySelector(".video-thumb"); if (video) return openVideoViewer(video.dataset.videoSrc, timestamp); const audio = document.activeElement.querySelector(".voice-note"); if (audio) return toggleVoiceNote(audio); return messageActions(timestamp); }
+  if (event.key === "Enter" && document.activeElement?.matches("[data-message-time]")) { event.preventDefault(); const timestamp = Number(document.activeElement.dataset.messageTime); const image = document.activeElement.querySelector("img.media"); if (image) return openImageViewer(image.dataset.protectedSrc || image.src, image.alt, timestamp); const video = document.activeElement.querySelector(".video-thumb"); if (video) return openVideoViewer(video.dataset.videoSrc, timestamp); const audio = document.activeElement.querySelector(".voice-note"); if (audio) return toggleVoiceNote(audio); return messageActions(timestamp); }
   if (event.key === "Enter" && document.activeElement?.matches(".spoiler")) { event.preventDefault(); document.activeElement.classList.toggle("revealed"); return; }
   if (state.view === "pinned-view" && ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) {
     event.preventDefault();

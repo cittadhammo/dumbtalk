@@ -516,7 +516,7 @@ async function body(req) {
 
 async function api(req, res, url) {
   if (!tokenMatches(req)) {
-    allowInvalidTokenAttempt(req);
+    if (!allowInvalidTokenAttempt(req)) await new Promise(resolve => setTimeout(resolve, 250));
     // Deliberately indistinguishable whether the token was absent, wrong, or rate-limited.
     return json(res, 404, { error: "Not found" });
   }
