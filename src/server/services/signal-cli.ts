@@ -90,6 +90,16 @@ export class SignalCliService {
 		this.#process?.kill('SIGTERM');
 	}
 
+	async restart(binary = this.options.binary) {
+		this.#stopping = true;
+		this.#ready = false;
+		this.stats.connected = false;
+		this.#process?.kill('SIGTERM');
+		await new Promise((resolve) => setTimeout(resolve, 100));
+		this.options.binary = binary;
+		await this.start();
+	}
+
 	async rpc<T>(
 		method: string,
 		params: Record<string, unknown> = {},

@@ -7,11 +7,7 @@ export class SignalGatewayAdapter implements SignalGateway {
 	constructor(
 		private readonly signal: SignalCliService,
 		private readonly deviceName: string,
-		private readonly update = {
-			version: 'bundled',
-			update: 'not-checked',
-			error: null as string | null,
-		},
+		private readonly update: { version: string; update: string; error?: string },
 	) {}
 
 	async status(): Promise<SignalGatewayStatus> {
@@ -22,7 +18,7 @@ export class SignalGatewayAdapter implements SignalGateway {
 			receive: this.signal.stats,
 			version: this.update.version,
 			update: this.update.update,
-			error: this.update.error,
+			error: this.update.error || null,
 			capabilities: {
 				polls: true,
 				pins: true,
