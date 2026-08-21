@@ -5,10 +5,12 @@ let refreshTimer;
 let typingTimer;
 let typingActive = false;
 let activeRecording = null;
+let protectedObjectUrls = [];
 const MINDFUL_KEY = "sigdumb-mindful-usage-v1";
 const MINDFUL_LAUNCH_GAP = 90_000;
 const MINDFUL_BURST_WINDOW = 45 * 60_000;
 const MINDFUL_TIME_THRESHOLDS = [15, 25];
+const WIDGET_TOKEN = new URL(location.href).hash.slice(1);
 const QUICK_REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
 const EMOJI_GROUPS = {
   Faces: "😀 😃 😄 😁 😆 😅 🤣 😂 🙂 🙃 😉 😊 😇 🥰 😍 🤩 😘 😗 ☺️ 😚 😋 😛 😜 🤪 🤨 🧐 🤓 😎 🥳 😏 😒 😞 😔 😟 😕 🙁 ☹️ 😣 😖 😫 😩 🥺 😢 😭 😤 😠 😡 🤬 🤯 😳 🥵 🥶 😱 😨 😰 😥 🤗 🤔 🫣 🤭 🫢 🤫 🤥 😶 😐 😑 😬 🙄 😯 😦 😧 😮 😲 🥱 😴 🤤 😪 😵 🤐 🥴 🤢 🤮 🤧 😷 🤒 🤕",
@@ -19,12 +21,24 @@ const EMOJI_GROUPS = {
 
 function setSoftkeys(left = "", center = "", right = "") { [left, center, right].forEach((value, index) => soft[index].textContent = value); }
 async function request(path, options = {}) {
-  const response = await fetch(path, { ...options, headers: { "content-type": "application/json", ...(options.headers || {}) } });
+  const response = await fetch(path, { ...options, headers: { "content-type": "application/json", authorization: `Bearer ${WIDGET_TOKEN}`, ...(options.headers || {}) } });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) { const error = new Error(payload.error || `Request failed (${response.status})`); error.status = response.status; throw error; }
   return payload;
 }
 function escapeHtml(value) { return String(value ?? "").replace(/[&<>"']/g, character => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character]); }
+function clearProtectedMedia() { protectedObjectUrls.forEach(url => URL.revokeObjectURL(url)); protectedObjectUrls = []; }
+async function protectedBlobUrl(path) {
+  const response = await fetch(path, { headers: { authorization: `Bearer ${WIDGET_TOKEN}` } });
+  if (!response.ok) throw new Error("Media unavailable");
+  const url = URL.createObjectURL(await response.blob()); protectedObjectUrls.push(url); return url;
+}
+function hydrateProtectedMedia(root = document) {
+  root.querySelectorAll?.("[data-protected-src]").forEach(async element => {
+    try { const src = await protectedBlobUrl(element.dataset.protectedSrc); if (element.isConnected) { element.src = src; if (element.matches(".video-viewer video")) element.play().catch(() => {}); } }
+    catch { element.closest(".avatar")?.querySelector("img")?.remove(); }
+  });
+}
 function focusFirst() { requestAnimationFrame(() => document.querySelector(".focusable")?.focus()); }
 function initials(name) { return String(name || "?").split(/\s+/).slice(0, 2).map(part => part[0]).join("").toUpperCase(); }
 function receiptTime(value) {
@@ -36,20 +50,27 @@ function receiptTime(value) {
 }
 function stopRefresh() { clearInterval(refreshTimer); }
 function usageDay() { return new Date().toLocaleDateString("en-CA", { timeZone: "Europe/London" }); }
-function loadMindfulUsage() {
+async function loadMindfulUsage() {
+  const day = usageDay();
   try {
-    const saved = JSON.parse(localStorage.getItem(MINDFUL_KEY) || "{}");
-    if (saved.day === usageDay()) return { day: saved.day, checks: Number(saved.checks) || 0, activeMs: Number(saved.activeMs) || 0, launches: Array.isArray(saved.launches) ? saved.launches : [], nudges: saved.nudges || {}, lastLaunch: Number(saved.lastLaunch) || 0 };
+    const remote = await request(`/api/mindful?day=${encodeURIComponent(day)}`);
+    const saved = remote.usage || JSON.parse(localStorage.getItem(MINDFUL_KEY) || "{}");
+    if (saved.day === day || remote.usage) return { day, checks: Number(saved.checks) || 0, activeMs: Number(saved.activeMs) || 0, launches: Array.isArray(saved.launches) ? saved.launches : [], nudges: saved.nudges || {}, lastLaunch: Number(saved.lastLaunch) || 0 };
   } catch {}
-  return { day: usageDay(), checks: 0, activeMs: 0, launches: [], nudges: {}, lastLaunch: 0 };
+  return { day, checks: 0, activeMs: 0, launches: [], nudges: {}, lastLaunch: 0 };
 }
-function saveMindfulUsage() { if (state.mindful) localStorage.setItem(MINDFUL_KEY, JSON.stringify(state.mindful)); }
+function saveMindfulUsage() {
+  if (!state.mindful) return;
+  localStorage.setItem(MINDFUL_KEY, JSON.stringify(state.mindful));
+  const usage = { ...state.mindful }; delete usage.day; delete usage.lastTick; delete usage.openedNow;
+  request("/api/mindful", { method: "POST", body: JSON.stringify({ day: state.mindful.day, usage }) }).catch(() => {});
+}
 function usageLabel() { const usage = state.mindful; if (!usage) return ""; return `${usage.checks} check${usage.checks === 1 ? "" : "s"} · ${Math.floor(usage.activeMs / 60_000)}m`; }
 function usageBadge() { return state.mindful ? `<span class="usage-tally" aria-label="Today's usage">${escapeHtml(usageLabel())}</span>` : ""; }
 function refreshUsageBadge() { document.querySelectorAll(".usage-tally").forEach(node => { node.textContent = usageLabel(); }); }
-function startMindfulSession() {
+async function startMindfulSession() {
   if (state.mindfulStarted) return;
-  state.mindfulStarted = true; state.mindful = loadMindfulUsage();
+  state.mindfulStarted = true; state.mindful = await loadMindfulUsage();
   const now = Date.now();
   if (!state.mindful.lastLaunch || now - state.mindful.lastLaunch >= MINDFUL_LAUNCH_GAP) { state.mindful.checks++; state.mindful.launches.push(now); state.mindful.openedNow = true; }
   state.mindful.lastLaunch = now; state.mindful.launches = state.mindful.launches.filter(time => now - time < 24 * 60 * 60_000); state.mindful.lastTick = now; state.mindfulVisible = !document.hidden;
@@ -91,27 +112,20 @@ function showMindfulPause(reason) {
   setSoftkeys("", "Continue", "Exit"); const continueButton = document.querySelector("#mindful-continue"); continueButton.addEventListener("click", dismissMindfulPause); requestAnimationFrame(() => continueButton.focus());
 }
 function dismissMindfulPause() { state.mindfulPause = false; document.querySelector(".mindful-pause")?.remove(); state.mindfulReturnFocus?.focus?.({ preventScroll: true }); state.mindfulReturnFocus = null; resumeMindfulRefresh(); }
-function screen(title, content, className = "") { const heading = title === "SigDumb" ? `<span class="brand-title"><img src="/sigdumb.png" alt="">SigDumb</span>` : escapeHtml(title); app.innerHTML = `<section class="screen ${className}"><header>${heading}${usageBadge()}</header>${content}</section>`; app.scrollTop = 0; }
+function screen(title, content, className = "") { clearProtectedMedia(); const heading = title === "SigDumb" ? `<span class="brand-title"><img src="/sigdumb.png" alt="">SigDumb</span>` : escapeHtml(title); app.innerHTML = `<section class="screen ${className}"><header>${heading}${usageBadge()}</header>${content}</section>`; app.scrollTop = 0; }
 function actionError(error) { const target = document.querySelector("#action-error"); if (target) target.textContent = error.message; }
-
-function login(message = "") {
-  state.view = "login"; stopRefresh();
-  app.innerHTML = `<section class="center login-screen"><img class="brand-logo" src="/sigdumb.png" alt=""><h1>SigDumb</h1><p class="hint">Signal for CloudPhone</p><form id="login-form"><input class="field focusable" name="password" type="password" autocomplete="current-password" placeholder="Password" required><p class="error">${escapeHtml(message)}</p></form></section>`;
-  setSoftkeys("Sign in", "", "Exit");
-  document.querySelector("#login-form").addEventListener("submit", async event => { event.preventDefault(); try { await request("/api/login", { method: "POST", body: JSON.stringify({ password: event.currentTarget.password.value }) }); await boot(); } catch (error) { login(error.message); } });
-  focusFirst();
-}
 
 async function boot() {
   state.view = "loading"; app.innerHTML = `<section class="center"><img class="brand-logo" src="/sigdumb.png" alt=""><p>Starting SigDumb…</p></section>`; setSoftkeys();
   try {
+    if (!WIDGET_TOKEN) throw new Error("This widget is not configured.");
     const status = await request("/api/status"); state.settings = status.settings || {}; state.capabilities = status.capabilities || {}; state.signalCli = status.signalCli || {};
     if (!status.signalReady) return setTimeout(boot, 1500);
     if (!status.linked) return linkScreen();
-    startMindfulSession(); await conversations(); maybeMindfulPause();
+    await startMindfulSession(); await conversations(); maybeMindfulPause();
   } catch (error) {
-    if (error.status === 401) return login();
-    app.innerHTML = `<section class="center"><p class="error">${escapeHtml(error.message)}</p><button id="retry" class="action focusable">Retry</button></section>`;
+    const message = error.status === 404 ? "This widget is not configured." : error.message;
+    app.innerHTML = `<section class="center"><p class="error">${escapeHtml(message)}</p><button id="retry" class="action focusable">Retry</button></section>`;
     document.querySelector("#retry").addEventListener("click", () => location.reload()); focusFirst();
   }
 }
@@ -163,7 +177,7 @@ function previewMarkup(item) {
   const content = plainMentionText(item.last.text, item.last.mentions) || mediaLabel(item.last) || "Message";
   return `<b>${escapeHtml(sender)}:</b> ${escapeHtml(content)} ${receiptMarkup(item.last, true, item.kind === "group")}`;
 }
-function avatarMarkup(item) { return item.noteToSelf ? `<span class="avatar note-avatar" aria-label="Note to Self">🔖</span>` : `<span class="avatar"><span>${escapeHtml(initials(item.name))}</span><img src="${escapeHtml(item.avatar)}" alt=""></span>`; }
+function avatarMarkup(item) { return item.noteToSelf ? `<span class="avatar note-avatar" aria-label="Note to Self">🔖</span>` : `<span class="avatar"><span>${escapeHtml(initials(item.name))}</span><img data-protected-src="${escapeHtml(item.avatar)}" alt=""></span>`; }
 
 async function conversations(restoreId, showArchived = state.showingArchived || false) {
   const payload = await request(`/api/conversations${showArchived ? "?archived=1" : ""}`);
@@ -172,7 +186,7 @@ async function conversations(restoreId, showArchived = state.showingArchived || 
   screen(payload.showingArchived ? "Archived" : "SigDumb", rows || `<p class="empty">${payload.showingArchived ? "No archived conversations" : "No conversations yet"}</p>`);
   setSoftkeys("Menu", "Open", payload.showingArchived ? "Back" : "Exit");
   document.querySelectorAll("[data-id]").forEach(button => button.addEventListener("click", () => openConversation(button.dataset.id)));
-  document.querySelectorAll(".avatar img").forEach(image => image.addEventListener("error", () => image.remove()));
+  hydrateProtectedMedia(app);
   const target = restoreId && document.querySelector(`[data-id="${CSS.escape(restoreId)}"]`); (target || document.querySelector(".focusable"))?.focus();
   stopRefresh(); refreshTimer = setInterval(() => state.view === "conversations" && conversations(document.activeElement?.dataset.id, state.showingArchived).catch(() => {}), 3000);
 }
@@ -187,22 +201,22 @@ async function openConversation(id) {
 }
 function mediaHtml(message) {
   if (message.viewOnce) return message.viewOnceOpened ? `<span class="view-once opened">◉ View-once media opened</span>` : `<button class="view-once focusable" data-view-once="${escapeHtml(message.id)}">◉ Open view-once media</button>`;
-  return (message.attachments || []).map((attachment, index) => { const src = `/api/attachment/${encodeURIComponent(message.id)}/${index}`; if (attachment.contentType?.startsWith("image/")) return `<img class="media" src="${src}" alt="${escapeHtml(attachment.caption || "Photo")}" loading="lazy">`; if (attachment.contentType?.startsWith("video/")) return `<span class="video-thumb" data-video-src="${src}"><video class="media" src="${src}" preload="metadata" muted playsinline></video><span class="play-icon">▶</span></span>`; if (attachment.contentType?.startsWith("audio/")) return `<span class="voice-label">▶ Voice note</span><audio class="voice-note" src="${src}" controls preload="metadata"></audio>`; return ""; }).join("");
+  return (message.attachments || []).map((attachment, index) => { const src = `/api/attachment/${encodeURIComponent(message.id)}/${index}`; if (attachment.contentType?.startsWith("image/")) return `<img class="media" data-protected-src="${src}" alt="${escapeHtml(attachment.caption || "Photo")}" loading="lazy">`; if (attachment.contentType?.startsWith("video/")) return `<span class="video-thumb" data-video-src="${src}"><video class="media" data-protected-src="${src}" preload="metadata" muted playsinline></video><span class="play-icon">▶</span></span>`; if (attachment.contentType?.startsWith("audio/")) return `<span class="voice-label">▶ Voice note</span><audio class="voice-note" data-protected-src="${src}" controls preload="metadata"></audio>`; return ""; }).join("");
 }
 function openImageViewer(src, alt = "Photo", timestamp = null) {
   state.roomScroll = app.scrollTop;
   state.returnFocusTimestamp = timestamp;
   state.view = "image-viewer";
-  app.innerHTML = `<section class="image-viewer"><img src="${src}" alt="${escapeHtml(alt)}"></section>`;
+  clearProtectedMedia(); app.innerHTML = `<section class="image-viewer"><img ${src.startsWith("/api/") ? `data-protected-src="${src}"` : `src="${src}"`} alt="${escapeHtml(alt)}"></section>`; hydrateProtectedMedia(app);
   setSoftkeys("", "", "Back");
 }
 function openVideoViewer(src, timestamp = null) {
   state.roomScroll = app.scrollTop;
   state.returnFocusTimestamp = timestamp;
   state.view = "video-viewer";
-  app.innerHTML = `<section class="video-viewer"><video src="${escapeHtml(src)}" controls autoplay playsinline></video></section>`;
+  clearProtectedMedia(); app.innerHTML = `<section class="video-viewer"><video ${src.startsWith("/api/") ? `data-protected-src="${src}"` : `src="${escapeHtml(src)}"`} controls autoplay playsinline></video></section>`; hydrateProtectedMedia(app);
   setSoftkeys("", "Play/Pause", "Back");
-  const video = document.querySelector(".video-viewer video"); video.play().catch(() => {});
+  const video = document.querySelector(".video-viewer video"); if (video.src) video.play().catch(() => {});
 }
 function styledText(message) {
   const text = String(message.text || ""); const styles = [...(message.textStyles || []), ...(message.mentions || []).map(mention => ({ start: mention.start, length: mention.length, style: "mention" }))];
@@ -227,7 +241,7 @@ function messageHtml(message) {
   if (message.system) return `<div class="system-message">${escapeHtml(message.text)}</div>`;
   const edited = message.edited ? " · edited" : "";
   const sender = state.selected.kind === "group" && message.direction === "in" ? `<b class="sender">${escapeHtml(message.sender)}</b>` : "";
-  const sticker = message.sticker ? `<img class="sticker" src="/api/sticker/${encodeURIComponent(message.sticker.packId)}/${encodeURIComponent(message.sticker.stickerId)}" alt="${escapeHtml(message.sticker.emoji || "Sticker")}">` : "";
+  const sticker = message.sticker ? `<img class="sticker" data-protected-src="/api/sticker/${encodeURIComponent(message.sticker.packId)}/${encodeURIComponent(message.sticker.stickerId)}" alt="${escapeHtml(message.sticker.emoji || "Sticker")}">` : "";
   const body = `${sender}${quoteHtml(message.quote)}${sticker}${mediaHtml(message)}${pollHtml(message)}${message.text ? `<span class="message-text">${styledText(message)}</span>` : ""}${linkPreviewsHtml(message.previews)}${reactionsHtml(message.reactions)}<time>${new Date(message.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}${edited}${message.pinned ? " · pinned" : ""} ${receiptMarkup(message, true)}</time>`;
   return `<div role="button" tabindex="0" class="bubble ${message.direction}${message.deleted ? " deleted" : ""} focusable" data-message-time="${message.timestamp}">${body}</div>`;
 }
@@ -265,6 +279,7 @@ function renderRoom(payload) {
   document.querySelectorAll(".spoiler").forEach(element => element.addEventListener("click", event => { event.stopPropagation(); element.classList.toggle("revealed"); }));
   document.querySelectorAll("[data-view-once]").forEach(button => button.addEventListener("click", event => { event.stopPropagation(); openViewOnce(button); }));
   document.querySelectorAll("[data-poll-time]").forEach(button => button.addEventListener("click", event => { event.stopPropagation(); votePoll(Number(button.dataset.pollTime), Number(button.dataset.option)); }));
+  hydrateProtectedMedia(app);
   requestAnimationFrame(() => {
     const returnTarget = state.returnFocusTimestamp ? document.querySelector(`[data-message-time="${state.returnFocusTimestamp}"]`) : null;
     if (state.jumpTimestamp) { document.querySelector(`[data-message-time="${state.jumpTimestamp}"]`)?.scrollIntoView({ block: "center" }); state.jumpTimestamp = null; }
@@ -286,7 +301,7 @@ function multipleVoteScreen(message, initial) {
 }
 async function submitPollVote(poll, options) { await request("/api/poll/vote", { method: "POST", body: JSON.stringify({ kind: state.selected.kind, target: state.selected.target, timestamp: poll.timestamp, options }) }); await openConversation(state.selected.id); }
 async function openViewOnce(button) {
-  try { const payload = await request("/api/view-once/open", { method: "POST", body: JSON.stringify({ messageId: button.dataset.viewOnce }) }); const image = document.createElement("img"); image.className = "media"; image.src = payload.url; image.alt = "View-once media"; button.replaceWith(image); }
+  try { const payload = await request("/api/view-once/open", { method: "POST", body: JSON.stringify({ messageId: button.dataset.viewOnce }) }); const image = document.createElement("img"); image.className = "media"; image.dataset.protectedSrc = payload.url; image.alt = "View-once media"; button.replaceWith(image); hydrateProtectedMedia(app); }
   catch (error) { alert(error.message); }
 }
 async function loadOlder() {
@@ -354,12 +369,12 @@ function editMessage(message) {
 
 function mainMenu() {
   stopRefresh(); state.view = "main-menu"; const focused = document.activeElement?.dataset.id; state.menuConversation = state.conversations.find(item => item.id === focused);
-  screen("Menu", `<div class="menu-list"><p class="menu-heading">Start something</p><button id="menu-compose" class="action menu-action focusable"><span class="menu-icon">✎</span><span>Compose</span><span class="chevron">›</span></button><button id="menu-group" class="action menu-action focusable"><span class="menu-icon">♟</span><span>New group</span><span class="chevron">›</span></button><button id="menu-search" class="action menu-action focusable"><span class="menu-icon">⌕</span><span>Search messages</span><span class="chevron">›</span></button><p class="menu-heading">Conversations</p><button id="menu-archived" class="action menu-action focusable"><span class="menu-icon">▣</span><span>Archived chats</span><span class="menu-value">${state.archivedCount || 0}</span></button>${state.menuConversation ? `<button id="menu-favorite" class="action menu-action focusable"><span class="menu-icon">★</span><span>${state.menuConversation.favorite ? "Remove favourite" : "Favourite"} ${escapeHtml(state.menuConversation.name)}</span></button><button id="menu-archive" class="action menu-action focusable"><span class="menu-icon">${state.menuConversation.archived ? "↥" : "↧"}</span><span>${state.menuConversation.archived ? "Unarchive" : "Archive"} ${escapeHtml(state.menuConversation.name)}</span></button>` : ""}<p class="menu-heading">Application</p><button id="menu-settings" class="action menu-action focusable"><span class="menu-icon">⚙</span><span>Settings</span><span class="chevron">›</span></button><button id="menu-logout" class="action menu-action danger focusable"><span class="menu-icon">⇥</span><span>Log out</span></button><p id="action-error" class="error"></p></div>`);
+  screen("Menu", `<div class="menu-list"><p class="menu-heading">Start something</p><button id="menu-compose" class="action menu-action focusable"><span class="menu-icon">✎</span><span>Compose</span><span class="chevron">›</span></button><button id="menu-group" class="action menu-action focusable"><span class="menu-icon">♟</span><span>New group</span><span class="chevron">›</span></button><button id="menu-search" class="action menu-action focusable"><span class="menu-icon">⌕</span><span>Search messages</span><span class="chevron">›</span></button><p class="menu-heading">Conversations</p><button id="menu-archived" class="action menu-action focusable"><span class="menu-icon">▣</span><span>Archived chats</span><span class="menu-value">${state.archivedCount || 0}</span></button>${state.menuConversation ? `<button id="menu-favorite" class="action menu-action focusable"><span class="menu-icon">★</span><span>${state.menuConversation.favorite ? "Remove favourite" : "Favourite"} ${escapeHtml(state.menuConversation.name)}</span></button><button id="menu-archive" class="action menu-action focusable"><span class="menu-icon">${state.menuConversation.archived ? "↥" : "↧"}</span><span>${state.menuConversation.archived ? "Unarchive" : "Archive"} ${escapeHtml(state.menuConversation.name)}</span></button>` : ""}<p class="menu-heading">Application</p><button id="menu-settings" class="action menu-action focusable"><span class="menu-icon">⚙</span><span>Settings</span><span class="chevron">›</span></button><p id="action-error" class="error"></p></div>`);
   setSoftkeys("", "Select", "Back");
   document.querySelector("#menu-compose").addEventListener("click", composeScreen); document.querySelector("#menu-group").addEventListener("click", newGroupScreen); document.querySelector("#menu-search").addEventListener("click", searchScreen); document.querySelector("#menu-archived").addEventListener("click", () => conversations(null, true)); document.querySelector("#menu-settings").addEventListener("click", settingsScreen);
   document.querySelector("#menu-archive")?.addEventListener("click", async () => { try { await request("/api/conversation/archive", { method: "POST", body: JSON.stringify({ conversationId: state.menuConversation.id, archived: !state.menuConversation.archived }) }); await conversations(null, state.showingArchived); } catch (error) { actionError(error); } });
   document.querySelector("#menu-favorite")?.addEventListener("click", async () => { try { await request("/api/conversation/favorite", { method: "POST", body: JSON.stringify({ conversationId: state.menuConversation.id, favorite: !state.menuConversation.favorite }) }); await conversations(null, state.showingArchived); } catch (error) { actionError(error); } });
-  document.querySelector("#menu-logout").addEventListener("click", async () => { await request("/api/logout", { method: "POST", body: "{}" }); login(); }); focusFirst();
+  focusFirst();
 }
 function searchScreen() {
   stopRefresh(); state.view = "search";
@@ -487,7 +502,7 @@ async function sendVoiceNote() {
   const button = document.querySelector("#send-recording"); button.disabled = true;
   const name = String(activeRecording.blob.name || "").toLowerCase();
   const fallbackType = name.endsWith(".3gp") ? "audio/3gpp" : name.endsWith(".amr") ? "audio/amr" : name.endsWith(".m4a") ? "audio/mp4" : name.endsWith(".mp3") ? "audio/mpeg" : name.endsWith(".ogg") ? "audio/ogg" : "audio/webm";
-  try { const response = await fetch(`/api/voice?kind=${encodeURIComponent(state.selected.kind)}&target=${encodeURIComponent(state.selected.target)}`, { method: "POST", headers: { "content-type": activeRecording.blob.type || fallbackType }, body: activeRecording.blob }); const payload = await response.json(); if (!response.ok) throw new Error(payload.error || "Voice note failed"); activeRecording = null; state.roomScroll = null; await openConversation(state.selected.id); }
+  try { const response = await fetch(`/api/voice?kind=${encodeURIComponent(state.selected.kind)}&target=${encodeURIComponent(state.selected.target)}`, { method: "POST", headers: { "content-type": activeRecording.blob.type || fallbackType, authorization: `Bearer ${WIDGET_TOKEN}` }, body: activeRecording.blob }); const payload = await response.json(); if (!response.ok) throw new Error(payload.error || "Voice note failed"); activeRecording = null; state.roomScroll = null; await openConversation(state.selected.id); }
   catch (error) { button.disabled = false; actionError(error); }
 }
 

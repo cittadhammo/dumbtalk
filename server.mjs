@@ -2,7 +2,7 @@ import { createServer } from "node:http";
 import { createReadStream, existsSync } from "node:fs";
 import { mkdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
 import { basename, extname, join, normalize } from "node:path";
-import { randomBytes, scryptSync, timingSafeEqual, createHmac } from "node:crypto";
+import { timingSafeEqual } from "node:crypto";
 import { spawn } from "node:child_process";
 import QRCode from "qrcode";
 import { prepareSignalCli, rollBackSignalCli } from "./signal-cli-updater.mjs";
@@ -16,10 +16,9 @@ const PUBLIC_DIR = new URL("./public/", import.meta.url).pathname;
 const RPC_URL = "http://127.0.0.1:7583/api/v1/rpc";
 const EVENTS_URL = "http://127.0.0.1:7583/api/v1/events";
 const MAX_MESSAGES = 3000;
-const sessions = new Map();
-const loginAttempts = new Map();
+const invalidTokenAttempts = new Map();
 let messages = [];
-let appState = { archived: [], favorites: [], readThrough: {}, expirations: {}, settings: { sendReadReceipts: true, sendTypingIndicators: true, linkPreviews: true, defaultExpiration: 0 } };
+let appState = { archived: [], favorites: [], readThrough: {}, expirations: {}, mindfulUsage: {}, settings: { sendReadReceipts: true, sendTypingIndicators: true, linkPreviews: true, defaultExpiration: 0 } };
 let signalProcess;
 let signalBinary = "/usr/local/bin/signal-cli";
 let signalFallback = signalBinary;
@@ -34,6 +33,7 @@ const conversationAliases = new Map();
 const typingState = new Map();
 const identityNames = new Map();
 const viewOnceTokens = new Map();
+let stateWrite = Promise.resolve();
 
 function versionAtLeast(version, minimum) {
   const left = String(version).split(".").map(Number); const right = minimum.split(".").map(Number);
@@ -63,11 +63,8 @@ function displayIdentity(value, fallback = "Unknown") {
   return suppliedName || identityNames.get(identifier) || identifier || fallback;
 }
 
-if (!process.env.ADMIN_PASSWORD || process.env.ADMIN_PASSWORD.length < 12) {
-  throw new Error("ADMIN_PASSWORD must be at least 12 characters");
-}
-if (!process.env.SESSION_SECRET || process.env.SESSION_SECRET.length < 32) {
-  throw new Error("SESSION_SECRET must be at least 32 characters");
+if (!process.env.WIDGET_TOKEN || Buffer.byteLength(process.env.WIDGET_TOKEN) < 43) {
+  throw new Error("WIDGET_TOKEN must be a 256-bit random token (for example: openssl rand -base64 32 | tr '+/' '-_' | tr -d '=')");
 }
 if (!process.env.PUBLIC_ORIGIN?.startsWith("https://")) {
   throw new Error("PUBLIC_ORIGIN must be the public https:// origin");
@@ -205,9 +202,13 @@ async function persistMessages() {
 }
 
 async function persistState() {
-  const tmp = join(APP_DIR, "state.json.tmp");
-  await writeFile(tmp, JSON.stringify(appState), { mode: 0o600 });
-  await rename(tmp, join(APP_DIR, "state.json"));
+  const snapshot = JSON.stringify(appState);
+  stateWrite = stateWrite.catch(() => {}).then(async () => {
+    const tmp = join(APP_DIR, "state.json.tmp");
+    await writeFile(tmp, snapshot, { mode: 0o600 });
+    await rename(tmp, join(APP_DIR, "state.json"));
+  });
+  return stateWrite;
 }
 
 function conversationForData(envelope, data, outgoing, account) {
@@ -460,34 +461,24 @@ async function listenForMessages() {
   listening = false;
 }
 
-function passwordMatches(candidate) {
-  const salt = Buffer.from(process.env.SESSION_SECRET);
-  const expected = scryptSync(process.env.ADMIN_PASSWORD, salt, 32);
-  const actual = scryptSync(String(candidate || ""), salt, 32);
-  return timingSafeEqual(expected, actual);
+function tokenMatches(req) {
+  const supplied = req.headers.authorization?.match(/^Bearer (.+)$/i)?.[1];
+  if (!supplied) return false;
+  const expected = Buffer.from(process.env.WIDGET_TOKEN);
+  const actual = Buffer.from(supplied);
+  return actual.length === expected.length && timingSafeEqual(actual, expected);
 }
 
-function sign(value) {
-  return createHmac("sha256", process.env.SESSION_SECRET).update(value).digest("base64url");
+function requestIp(req) {
+  return String(req.headers["x-forwarded-for"] || req.socket.remoteAddress || "unknown").split(",")[0].trim();
 }
 
-function createSession() {
-  const id = randomBytes(24).toString("base64url");
-  const expires = Date.now() + 30 * 24 * 60 * 60 * 1000;
-  sessions.set(id, expires);
-  return `${id}.${expires}.${sign(`${id}.${expires}`)}`;
-}
-
-function sessionFrom(req) {
-  const raw = req.headers.cookie?.split(";").map(v => v.trim()).find(v => v.startsWith("signal_session="))?.slice(15);
-  if (!raw) return null;
-  const [id, expires, signature] = raw.split(".");
-  if (!id || !expires || !signature) return null;
-  const expected = Buffer.from(sign(`${id}.${expires}`));
-  const actual = Buffer.from(signature);
-  if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) return null;
-  if (Number(expires) < Date.now() || sessions.get(id) !== Number(expires)) return null;
-  return id;
+function allowInvalidTokenAttempt(req) {
+  const now = Date.now(); const ip = requestIp(req);
+  const attempt = invalidTokenAttempts.get(ip) || { count: 0, resetAt: now + 60_000 };
+  if (now >= attempt.resetAt) { attempt.count = 0; attempt.resetAt = now + 60_000; }
+  attempt.count += 1; invalidTokenAttempts.set(ip, attempt);
+  return attempt.count <= 30;
 }
 
 function requireSameOrigin(req) {
@@ -524,31 +515,33 @@ async function body(req) {
 }
 
 async function api(req, res, url) {
-  if (url.pathname === "/api/login" && req.method === "POST") {
-    const ip = req.socket.remoteAddress || "unknown";
-    const attempt = loginAttempts.get(ip) || { count: 0, after: 0 };
-    if (attempt.after > Date.now()) return json(res, 429, { error: "Try again later" });
-    const input = await body(req);
-    if (!passwordMatches(input.password)) {
-      attempt.count += 1;
-      attempt.after = attempt.count >= 5 ? Date.now() + 60_000 : 0;
-      loginAttempts.set(ip, attempt);
-      return json(res, 401, { error: "Invalid password" });
-    }
-    loginAttempts.delete(ip);
-    const secure = process.env.COOKIE_SECURE !== "false" ? "; Secure" : "";
-    return json(res, 200, { ok: true }, {
-      "set-cookie": `signal_session=${createSession()}; Path=/; HttpOnly; SameSite=Strict; Max-Age=2592000${secure}`,
-    });
+  if (!tokenMatches(req)) {
+    allowInvalidTokenAttempt(req);
+    // Deliberately indistinguishable whether the token was absent, wrong, or rate-limited.
+    return json(res, 404, { error: "Not found" });
   }
-
-  const session = sessionFrom(req);
-  if (!session) return json(res, 401, { error: "Authentication required" });
   if (req.method !== "GET" && !requireSameOrigin(req)) return json(res, 403, { error: "Origin rejected" });
 
-  if (url.pathname === "/api/logout" && req.method === "POST") {
-    sessions.delete(session);
-    return json(res, 200, { ok: true }, { "set-cookie": "signal_session=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0" });
+  if (url.pathname === "/api/mindful" && req.method === "GET") {
+    const day = url.searchParams.get("day");
+    return json(res, 200, { usage: day ? appState.mindfulUsage?.[day] || null : null });
+  }
+  if (url.pathname === "/api/mindful" && req.method === "POST") {
+    const input = await body(req);
+    const day = typeof input.day === "string" && /^\d{4}-\d{2}-\d{2}$/.test(input.day) ? input.day : null;
+    if (!day) return json(res, 400, { error: "Invalid day" });
+    const usage = input.usage && typeof input.usage === "object" ? input.usage : {};
+    appState.mindfulUsage ||= {};
+    appState.mindfulUsage[day] = {
+      checks: Math.max(0, Math.min(99, Number(usage.checks) || 0)),
+      activeMs: Math.max(0, Math.min(86_400_000, Number(usage.activeMs) || 0)),
+      launches: Array.isArray(usage.launches) ? usage.launches.filter(Number.isFinite).slice(-24) : [],
+      nudges: usage.nudges && typeof usage.nudges === "object" ? usage.nudges : {},
+      lastLaunch: Math.max(0, Number(usage.lastLaunch) || 0),
+    };
+    for (const key of Object.keys(appState.mindfulUsage)) if (key !== day && key < new Date(Date.now() - 7 * 86_400_000).toLocaleDateString("en-CA", { timeZone: "Europe/London" })) delete appState.mindfulUsage[key];
+    await persistState();
+    return json(res, 200, { usage: appState.mindfulUsage[day] });
   }
   if (url.pathname === "/api/status" && req.method === "GET") {
     const accounts = signalReady ? await getAccounts() : [];

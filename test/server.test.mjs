@@ -65,9 +65,9 @@ test("requested messaging and conversation features remain wired", async () => {
   assert.match(client, /video-viewer"><video[^>]* controls/);
   assert.match(client, /<video class="media"/);
   assert.match(client, /video\.currentTime.*ArrowLeft/);
-  assert.match(client, /<h1>SigDumb<\/h1>/);
-  assert.match(client, /setSoftkeys\("Sign in", "", "Exit"\)/);
-  assert.match(client, /state\.view === "login".*requestSubmit/);
+  assert.match(client, /const WIDGET_TOKEN = new URL\(location\.href\)\.hash\.slice\(1\)/);
+  assert.match(client, /authorization: `Bearer \$\{WIDGET_TOKEN\}`/);
+  assert.doesNotMatch(client, /\/api\/login/);
   assert.match(client, /class="room-typing"/);
   assert.match(client, /recorder\.start\(\)/);
   assert.match(client, /getUserMedia\(\{ audio: true \}\)/);
@@ -80,6 +80,19 @@ test("requested messaging and conversation features remain wired", async () => {
   assert.match(client, /returnTarget\.focus\(\{ preventScroll: true \}\)/);
   for (const feature of ["voiceRecorderScreen", "pinnedMessages", "pollComposer", "safetyNumberScreen", "groupSettingsScreen", "searchScreen", "draftKey"]) assert.match(client, new RegExp(feature));
   assert.doesNotMatch(client, /setSoftkeys\([^\n]*"Refresh"/);
+});
+
+test("widget authentication is token-only and avoids URL token leakage", async () => {
+  const server = await readFile(new URL("../server.mjs", import.meta.url), "utf8");
+  const compose = await readFile(new URL("../compose.yaml", import.meta.url), "utf8");
+  assert.match(server, /WIDGET_TOKEN must be a 256-bit random token/);
+  assert.match(server, /function tokenMatches\(req\)/);
+  assert.match(server, /return json\(res, 404, \{ error: "Not found" \}\)/);
+  assert.match(server, /url\.pathname === "\/api\/mindful"/);
+  assert.doesNotMatch(server, /ADMIN_PASSWORD/);
+  assert.doesNotMatch(server, /signal_session/);
+  assert.match(compose, /WIDGET_TOKEN/);
+  assert.doesNotMatch(compose, /ADMIN_PASSWORD|SESSION_SECRET/);
 });
 
 test("automatic signal-cli updater keeps validation and rollback safeguards", async () => {
