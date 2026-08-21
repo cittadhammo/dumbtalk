@@ -1,5 +1,9 @@
 @use "tokens";
 
+// Temporary visual compatibility layer. These rules are split into SCSS partials
+// as their corresponding Preact components land.
+@import "../../../public/app.css";
+
 html,
 body,
 #app {
