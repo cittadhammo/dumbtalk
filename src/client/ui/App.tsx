@@ -1,6 +1,7 @@
 import { useEffect, useState } from "preact/hooks";
 import { api, hasWidgetToken } from "../api/client";
 import { StartupScreen } from "./StartupScreen";
+import { LinkScreen } from "./LinkScreen";
 
 type Status = { signalReady: boolean; linked: boolean };
 
@@ -15,5 +16,6 @@ export function App() {
   useEffect(boot, []);
   if (error) return <StartupScreen message={error} error onRetry={boot} />;
   if (!status) return <StartupScreen message="Starting SigDumb…" />;
-  return <StartupScreen message={status.linked ? "Conversations are migrating…" : "Signal needs linking…"} />;
+  if (!status.linked) return <LinkScreen onLinked={boot} />;
+  return <StartupScreen message="Conversations are migrating…" />;
 }
