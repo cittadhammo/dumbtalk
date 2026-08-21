@@ -1,15 +1,18 @@
-@use "tokens";
+@use 'tokens';
 
 // Temporary visual compatibility layer. These rules are split into SCSS partials
 // as their corresponding Preact components land.
-@import "../../../public/app.css";
+@import '../../../public/app.css';
 
 html,
 body,
 #app {
-  width: 100%;
-  height: 100%;
-  margin: 0;
+	width: 100%;
+	height: 100%;
+	margin: 0;
 }
 
-#app { background: tokens.$background; color: tokens.$text; }
+#app {
+	background: tokens.$background;
+	color: tokens.$text;
+}
