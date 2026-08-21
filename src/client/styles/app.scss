@@ -12,11 +12,4 @@ body,
   margin: 0;
 }
 
-.migration-shell {
-  display: grid;
-  height: 100%;
-  place-items: center;
-  background: tokens.$background;
-  color: tokens.$text;
-  font: 14px/1.2 system-ui, sans-serif;
-}
+#app { background: tokens.$background; color: tokens.$text; }
