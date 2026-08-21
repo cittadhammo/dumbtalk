@@ -3,9 +3,12 @@ import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
 import { readConfig, type AppConfig } from './config.js';
 import { hasWidgetToken, isSameOrigin } from './auth.js';
-import { ErrorReply, HealthReply } from './schemas/common.js';
+import { HealthReply } from './schemas/common.js';
 import { AppStateRepository } from './repositories/app-state.js';
 import { mindfulRoutes } from './routes/mindful.js';
+import { linkingRoutes } from './routes/linking.js';
+import { statusRoutes } from './routes/status.js';
+import type { SignalGateway } from './services/signal-gateway.js';
 
 const csp = {
 	directives: {
@@ -21,7 +24,10 @@ const csp = {
 	},
 };
 
-export async function buildServer(config: AppConfig = readConfig()): Promise<FastifyInstance> {
+export async function buildServer(
+	config: AppConfig = readConfig(),
+	signal?: SignalGateway,
+): Promise<FastifyInstance> {
 	const app = Fastify({
 		logger: {
 			redact: ['req.headers.authorization', 'req.headers.cookie', 'res.headers.set-cookie'],
@@ -61,14 +67,13 @@ export async function buildServer(config: AppConfig = readConfig()): Promise<Fas
 
 	await app.register(mindfulRoutes(new AppStateRepository(config.dataDir)));
 
-	app.get(
-		'/api/status',
-		{
-			config: { rateLimit: { max: 60, timeWindow: '1 minute' } },
-			schema: { response: { 501: ErrorReply } },
-		},
-		async (_request, reply) => reply.code(501).send({ error: 'Signal service not migrated yet' }),
-	);
+	if (signal) {
+		await app.register(statusRoutes(signal));
+		await app.register(linkingRoutes(signal));
+	} else
+		app.get('/api/status', async (_request, reply) =>
+			reply.code(501).send({ error: 'Signal service not migrated yet' }),
+		);
 
 	return app;
 }
