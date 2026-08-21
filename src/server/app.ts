@@ -4,6 +4,8 @@ import rateLimit from "@fastify/rate-limit";
 import { readConfig, type AppConfig } from "./config.js";
 import { hasWidgetToken, isSameOrigin } from "./auth.js";
 import { ErrorReply, HealthReply } from "./schemas/common.js";
+import { AppStateRepository } from "./repositories/app-state.js";
+import { mindfulRoutes } from "./routes/mindful.js";
 
 const csp = {
   directives: {
@@ -46,6 +48,8 @@ export async function buildServer(config: AppConfig = readConfig()): Promise<Fas
       return reply.code(403).send({ error: "Origin rejected" });
     }
   });
+
+  await app.register(mindfulRoutes(new AppStateRepository(config.dataDir)));
 
   app.get("/api/status", {
     config: { rateLimit: { max: 60, timeWindow: "1 minute" } },
