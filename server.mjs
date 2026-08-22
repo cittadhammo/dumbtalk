@@ -301,6 +301,26 @@ async function applyEnvelopeState(payload) {
   if (!envelope) return false;
   const account = payload?.account || payload?.params?.account || payload?.params?.result?.account;
 
+  // A linked Signal client mirrors its locally-read messages through sync messages.
+  // Use those timestamps as the canonical read boundary so SigDumb starts where the
+  // user last left off on another device.
+  const syncedReads = envelope.syncMessage?.readMessages || envelope.syncMessage?.readMessage;
+  if (syncedReads) {
+    let changed = false;
+    for (const receipt of Array.isArray(syncedReads) ? syncedReads : [syncedReads]) {
+      const timestamp = Number(receipt.timestamp || receipt.sentTimestamp || receipt.messageTimestamp);
+      const sender = receipt.senderE164 || receipt.senderNumber || receipt.senderUuid || receipt.senderAci || receipt.sender;
+      if (!Number.isFinite(timestamp)) continue;
+      const message = messages.find(item => item.direction === "in" && item.timestamp === timestamp && (!sender || item.senderId === sender || item.conversationId === `direct:${sender}`));
+      if (!message) continue;
+      const conversationId = [...conversationAliases].find(([, aliases]) => aliases.has(message.conversationId))?.[0] || message.conversationId;
+      const previous = Number(appState.readThrough[conversationId] || 0);
+      if (timestamp > previous) { appState.readThrough[conversationId] = timestamp; changed = true; }
+    }
+    if (changed) await persistState();
+    return true;
+  }
+
   if (envelope.receiptMessage) {
     const receipt = envelope.receiptMessage;
     const status = receipt.isViewed ? "viewed" : receipt.isRead ? "read" : receipt.isDelivery ? "delivered" : null;

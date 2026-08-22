@@ -223,9 +223,8 @@ async function conversations(restoreId, showArchived = state.showingArchived || 
 async function openConversation(id) {
   const returning = !["conversations", "compose", "search"].includes(state.view);
   stopRefresh(); state.selected = state.conversations.find(item => item.id === id) || state.selected;
-  if (!returning) state.roomScroll = null;
+  if (!returning) { state.roomScroll = null; state.followBottom = false; state.initialRoom = true; }
   const payload = await request(`/api/messages/${encodeURIComponent(id)}`); renderRoom(payload);
-  request("/api/read", { method: "POST", body: JSON.stringify({ conversationId: id }) }).catch(() => {});
   refreshTimer = setInterval(() => state.view === "room" && refreshRoom(), 2500);
 }
 function mediaHtml(message) {
@@ -298,6 +297,7 @@ function typingIndicatorHtml(typing) {
 }
 function renderRoom(payload) {
   state.view = "room"; state.messages = payload.messages; state.typing = payload.typing; state.hasMore = payload.hasMore; state.readThrough = payload.readThrough || 0;
+  if (state.initialRoom) { state.followBottom = !payload.messages.some(message => message.direction === "in" && message.timestamp > state.readThrough); state.initialRoom = false; }
   const reply = state.replying ? `<div class="replying"><span>Replying to ${escapeHtml(state.replying.sender || "message")}</span><button id="cancel-reply" type="button">×</button></div>` : "";
   const older = payload.hasMore ? `<button id="load-older" class="load-older focusable">Load older messages</button>` : "";
   const identityWarning = state.selected.identityChanged ? `<div class="identity-warning">⚠ Safety number changed. Verify this contact in Chat options.</div>` : "";
@@ -316,12 +316,17 @@ function renderRoom(payload) {
   hydrateProtectedMedia(app);
   requestAnimationFrame(() => {
     const returnTarget = state.returnFocusTimestamp ? document.querySelector(`[data-message-time="${state.returnFocusTimestamp}"]`) : null;
-    if (state.jumpTimestamp) { document.querySelector(`[data-message-time="${state.jumpTimestamp}"]`)?.scrollIntoView({ block: "center" }); state.jumpTimestamp = null; }
+    const viewportTarget = state.viewportAnchor ? document.querySelector(`[data-message-time="${state.viewportAnchor.timestamp}"]`) : null;
+    if (state.viewportAnchor && viewportTarget) { const currentTop = viewportTarget.getBoundingClientRect().top - app.getBoundingClientRect().top; app.scrollTop += currentTop - state.viewportAnchor.top; state.roomScroll = null; }
+    else if (state.jumpTimestamp) { document.querySelector(`[data-message-time="${state.jumpTimestamp}"]`)?.scrollIntoView({ block: "center" }); state.jumpTimestamp = null; }
     else if (state.roomScroll !== null && state.roomScroll !== undefined) { app.scrollTop = state.roomScroll; state.roomScroll = null; }
-    else if (document.querySelector("#unread-marker")) document.querySelector("#unread-marker").scrollIntoView({ block: "start" });
-    else app.scrollTop = app.scrollHeight;
+    else if (document.querySelector("#unread-marker") && !state.followBottom) document.querySelector("#unread-marker").scrollIntoView({ block: "start" });
+    else if (state.followBottom !== false) app.scrollTop = app.scrollHeight;
     if (returnTarget) { returnTarget.focus({ preventScroll: true }); state.returnFocusTimestamp = null; }
-    else document.querySelector("#message").focus();
+    else if (state.viewportAnchor && viewportTarget) viewportTarget.focus({ preventScroll: true });
+    else if (document.querySelector("#unread-marker") && !state.followBottom) document.querySelector("#unread-marker")?.nextElementSibling?.focus({ preventScroll: true });
+    else { const input = document.querySelector("#message"); input.focus({ preventScroll: true }); const position = state.composeSelection ?? input.value.length; input.setSelectionRange?.(position, position); state.composeSelection = null; }
+    state.viewportAnchor = null;
   });
 }
 async function votePoll(timestamp, option) {
@@ -345,10 +350,28 @@ async function loadOlder() {
 }
 async function refreshRoom() {
   const payload = await request(`/api/messages/${encodeURIComponent(state.selected.id)}`);
-  if (JSON.stringify(payload.messages) !== JSON.stringify(state.messages.slice(-payload.messages.length)) || JSON.stringify(payload.typing) !== JSON.stringify(state.typing)) {
+  if (JSON.stringify(payload.messages) !== JSON.stringify(state.messages.slice(-payload.messages.length)) || JSON.stringify(payload.typing) !== JSON.stringify(state.typing) || payload.readThrough !== state.readThrough) {
+    const input = document.querySelector("#message"); const composing = document.activeElement === input; const focusedMessage = document.activeElement?.closest?.("[data-message-time]");
+    const distanceFromBottom = app.scrollHeight - app.scrollTop - app.clientHeight;
+    if (distanceFromBottom > 16) {
+      state.roomScroll = app.scrollTop;
+      const appTop = app.getBoundingClientRect().top; const headerBottom = document.querySelector("header")?.getBoundingClientRect().bottom || appTop;
+      const anchor = [...document.querySelectorAll("[data-message-time]")].find(element => element.getBoundingClientRect().bottom > headerBottom + 1);
+      if (anchor) state.viewportAnchor = { timestamp: Number(anchor.dataset.messageTime), top: anchor.getBoundingClientRect().top - appTop };
+    } else state.followBottom = true;
+    if (focusedMessage) state.returnFocusTimestamp = Number(focusedMessage.dataset.messageTime);
+    if (composing) state.composeSelection = input.selectionStart ?? input.value.length;
     const merged = new Map(state.messages.map(message => [message.id, message])); for (const message of payload.messages) merged.set(message.id, message);
     renderRoom({ ...payload, hasMore: state.hasMore || payload.hasMore, messages: [...merged.values()].sort((a, b) => a.timestamp - b.timestamp) });
   }
+}
+function markConversationReadAtBottom() {
+  if (state.readRequest || !state.selected || app.scrollHeight - app.scrollTop - app.clientHeight > 20) return;
+  state.followBottom = true; state.readRequest = true;
+  request("/api/read", { method: "POST", body: JSON.stringify({ conversationId: state.selected.id }) })
+    .then(result => { if (result.read) state.readThrough = Math.max(state.readThrough, ...state.messages.filter(message => message.direction === "in").map(message => message.timestamp)); })
+    .catch(() => {})
+    .finally(() => { state.readRequest = false; });
 }
 function handleTyping() { if (!typingActive) { typingActive = true; sendTypingState(false); } clearTimeout(typingTimer); typingTimer = setTimeout(() => sendTypingState(true), 2500); }
 function sendTypingState(stop) { if (stop) typingActive = false; return request("/api/typing", { method: "POST", body: JSON.stringify({ kind: state.selected.kind, target: state.selected.target, stop }) }).catch(() => {}); }
@@ -649,8 +672,8 @@ window.addEventListener("keydown", event => {
     else if (event.key === "ArrowDown") app.scrollBy({ top: 55 });
     return;
   }
-  if (event.key === "ArrowDown") { event.preventDefault(); if (!moveEmoji(0, 1) && !scrollFocusedMessage(1)) moveFocus(1); }
-  if (event.key === "ArrowUp") { event.preventDefault(); if (!moveEmoji(0, -1) && !scrollFocusedMessage(-1)) moveFocus(-1); }
+  if (event.key === "ArrowDown") { event.preventDefault(); if (!moveEmoji(0, 1) && !scrollFocusedMessage(1)) moveFocus(1); if (state.view === "room") requestAnimationFrame(markConversationReadAtBottom); }
+  if (event.key === "ArrowUp") { event.preventDefault(); if (state.view === "room") state.followBottom = false; if (!moveEmoji(0, -1) && !scrollFocusedMessage(-1)) moveFocus(-1); }
   if (event.key === "ArrowLeft" && moveEmoji(-1, 0)) event.preventDefault();
   if (event.key === "ArrowRight" && moveEmoji(1, 0)) event.preventDefault();
   if (event.code === "ShiftLeft" || event.key === "SoftLeft" || event.key === "Escape") { event.preventDefault(); softLeft(); }
