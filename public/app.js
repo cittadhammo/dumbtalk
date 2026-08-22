@@ -231,12 +231,30 @@ function mediaHtml(message) {
   if (message.viewOnce) return message.viewOnceOpened ? `<span class="view-once opened">◉ View-once media opened</span>` : `<button class="view-once focusable" data-view-once="${escapeHtml(message.id)}">◉ Open view-once media</button>`;
   return (message.attachments || []).map((attachment, index) => { const src = `/api/attachment/${encodeURIComponent(message.id)}/${index}`; if (attachment.contentType?.startsWith("image/")) return `<img class="media photo" src="${MEDIA_PLACEHOLDER}" data-protected-src="${src}" alt="${escapeHtml(attachment.caption || "Photo")}" loading="lazy">`; if (attachment.contentType?.startsWith("video/")) return `<span class="video-thumb" data-video-src="${src}"><video class="media" data-protected-src="${src}" preload="metadata" muted playsinline></video><span class="play-icon">▶</span></span>`; if (attachment.contentType?.startsWith("audio/")) return `<span class="voice-label">▶ Voice note</span><audio class="voice-note" data-protected-src="${src}" controls preload="metadata"></audio>`; return ""; }).join("");
 }
+function messageImages(timestamp) {
+  const message = state.messages.find(item => item.timestamp === timestamp);
+  return (message?.attachments || []).map((attachment, index) => attachment.contentType?.startsWith("image/") ? ({ src: `/api/attachment/${encodeURIComponent(message.id)}/${index}`, alt: attachment.caption || "Photo" }) : null).filter(Boolean);
+}
 function openImageViewer(src, alt = "Photo", timestamp = null) {
   state.roomScroll = app.scrollTop;
   state.returnFocusTimestamp = timestamp;
   state.view = "image-viewer"; state.imageZoomed = false;
-  clearProtectedMedia(); app.innerHTML = `<section class="image-viewer"><img ${src.startsWith("/api/") ? `data-protected-src="${src}"` : `src="${src}"`} alt="${escapeHtml(alt)}"></section>`; hydrateProtectedMedia(app);
-  setSoftkeys("", "Zoom", "Back");
+  state.imageItems = timestamp ? messageImages(timestamp) : [];
+  if (!state.imageItems.length) state.imageItems = [{ src, alt }];
+  state.imageIndex = Math.max(0, state.imageItems.findIndex(item => item.src === src));
+  renderImageViewer();
+}
+function renderImageViewer() {
+  const item = state.imageItems?.[state.imageIndex]; if (!item) return;
+  clearProtectedMedia();
+  const counter = state.imageItems.length > 1 ? `<span class="image-counter">${state.imageIndex + 1} / ${state.imageItems.length}</span>` : "";
+  app.innerHTML = `<section class="image-viewer${state.imageZoomed ? " zoomed" : ""}"><img ${item.src.startsWith("/api/") ? `data-protected-src="${item.src}"` : `src="${item.src}"`} alt="${escapeHtml(item.alt)}">${counter}</section>`;
+  hydrateProtectedMedia(app); setSoftkeys("", state.imageZoomed ? "Fit" : "Zoom", "Back");
+}
+function changeImage(direction) {
+  if (!state.imageItems || state.imageItems.length < 2) return;
+  state.imageIndex = (state.imageIndex + direction + state.imageItems.length) % state.imageItems.length;
+  state.imageZoomed = false; renderImageViewer();
 }
 function toggleImageZoom() {
   const viewer = document.querySelector(".image-viewer"); if (!viewer) return;
@@ -659,6 +677,7 @@ function softRight() {
 window.addEventListener("keydown", event => {
   if (event.repeat && ["ShiftLeft", "ShiftRight"].includes(event.code)) return;
   if (event.key === "Enter" && state.view === "image-viewer") { event.preventDefault(); return toggleImageZoom(); }
+  if (state.view === "image-viewer" && ["ArrowLeft", "ArrowRight"].includes(event.key)) { event.preventDefault(); return changeImage(event.key === "ArrowLeft" ? -1 : 1); }
   if (state.view === "image-viewer" && ["ArrowUp", "ArrowDown"].includes(event.key)) { event.preventDefault(); if (state.imageZoomed) document.querySelector(".image-viewer")?.scrollBy({ top: event.key === "ArrowUp" ? -120 : 120, behavior: "smooth" }); return; }
   if (event.key === "Enter" && state.view === "video-viewer") { event.preventDefault(); const video = document.querySelector(".video-viewer video"); return video.paused ? video.play() : video.pause(); }
   if (state.view === "video-viewer" && ["ArrowLeft", "ArrowRight"].includes(event.key)) { event.preventDefault(); const video = document.querySelector(".video-viewer video"); video.currentTime = Math.max(0, Math.min(video.duration || Infinity, video.currentTime + (event.key === "ArrowLeft" ? -10 : 10))); return; }
