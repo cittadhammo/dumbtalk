@@ -161,6 +161,10 @@ export class WhatsAppService {
     });
   }
 
+  runWrite(args) {
+    return this.run(["--lock-wait", "20s", ...args]);
+  }
+
   async beginSetup() {
     if (this.isLinked()) return this.statusPayload();
     if (this.authProcess) return this.statusPayload();
@@ -286,6 +290,7 @@ export class WhatsAppService {
         localPath: localPath || undefined,
       }] : [],
       reactions: [],
+      poll: undefined,
     };
     this.messageCache.set(`${chatJid}:${id}`, { ...result, chatName });
     return result;
@@ -329,7 +334,37 @@ export class WhatsAppService {
     if (before) args.push("--before", new Date(Number(before)).toISOString());
     const page = await this.run(args);
     const rows = asArray(page.messages || page);
-    const messages = rows.map(row => this.normalizeMessage(row, jid));
+    const reactions = rows.filter(row => value(row, "reaction_to_id", "ReactionToID"));
+    const messages = rows
+      .filter(row => !value(row, "reaction_to_id", "ReactionToID"))
+      .map(row => this.normalizeMessage(row, jid));
+    const byId = new Map(messages.map(message => [message.id, message]));
+    for (const reaction of reactions) {
+      const target = byId.get(String(value(reaction, "reaction_to_id", "ReactionToID")));
+      const emoji = String(value(reaction, "reaction_emoji", "ReactionEmoji") || "");
+      if (!target || !emoji) continue;
+      target.reactions.push({
+        emoji,
+        author: String(value(reaction, "sender_name", "SenderName") || "WhatsApp user"),
+        own: Boolean(value(reaction, "from_me", "FromMe")),
+      });
+    }
+    const polls = await this.run(["polls", "list", "--chat", safeJid(jid), "--limit", "100"])
+      .catch(() => ({ polls: [] }));
+    for (const poll of asArray(polls.polls)) {
+      const target = byId.get(String(value(poll, "msg_id", "MsgID")));
+      if (!target) continue;
+      target.poll = {
+        question: String(value(poll, "question", "Question") || "Poll"),
+        options: asArray(value(poll, "options", "Options")).map((text, index) => ({
+          index,
+          text: String(text),
+          votes: [],
+        })),
+        multiple: Number(value(poll, "selectable_count", "SelectableCount") || 1) > 1,
+        closed: false,
+      };
+    }
     return { messages, hasMore: rows.length === 60, readThrough: 0, typing: [] };
   }
 
@@ -344,7 +379,7 @@ export class WhatsAppService {
     const args = ["--lock-wait", "20s", "send", "text", "--to", target, "--message", text];
     if (input.replyToId) args.push("--reply-to", safeMessageId(input.replyToId));
     if (input.replyToSender) args.push("--reply-to-sender", safeJid(input.replyToSender));
-    const result = await this.run(args);
+    const result = await this.runWrite(args.slice(2));
     this.dialogCache.at = 0;
     return {
       id: String(result.id || randomUUID()),
@@ -364,19 +399,105 @@ export class WhatsAppService {
     const message = this.cachedMessage(target, safeMessageId(input.messageId));
     const args = ["--lock-wait", "20s", "send", "react", "--to", target, "--id", safeMessageId(input.messageId), "--reaction", input.remove ? "" : String(input.emoji || "")];
     if (isGroup(target) && message?.senderId) args.push("--sender", safeJid(message.senderId));
-    await this.run(args);
+    await this.runWrite(args.slice(2));
   }
 
   async updateConversation(input) {
     const jid = safeJid(input.conversationId);
-    if (typeof input.archived === "boolean") await this.run(["--lock-wait", "20s", "chats", input.archived ? "archive" : "unarchive", "--chat", jid]);
-    if (typeof input.muted === "boolean") await this.run(["--lock-wait", "20s", "chats", input.muted ? "mute" : "unmute", "--chat", jid]);
+    if (typeof input.archived === "boolean") await this.runWrite(["chats", input.archived ? "archive" : "unarchive", "--chat", jid]);
+    if (typeof input.muted === "boolean") await this.runWrite(["chats", input.muted ? "mute" : "unmute", "--chat", jid]);
     if (typeof input.favourite === "boolean") {
       this.state.favourites = input.favourite
         ? [...new Set([...this.state.favourites, jid])]
         : this.state.favourites.filter(item => item !== jid);
       await this.persistState();
     }
+    this.dialogCache.at = 0;
+  }
+
+  async setTyping(input) {
+    const target = safeJid(input.conversationId || input.target);
+    await this.runWrite(["presence", input.active === false ? "paused" : "typing", "--to", target]);
+  }
+
+  async editMessage(input) {
+    const target = safeJid(input.target);
+    const message = String(input.message || "").trim();
+    if (!message) throw new Error("Message cannot be empty");
+    await this.runWrite(["messages", "edit", "--chat", target, "--id", safeMessageId(input.messageId), "--message", message]);
+    this.messageCache.clear();
+  }
+
+  async deleteMessage(input) {
+    await this.runWrite(["messages", "delete", "--chat", safeJid(input.target), "--id", safeMessageId(input.messageId)]);
+    this.messageCache.clear();
+  }
+
+  async forwardMessage(input) {
+    await this.runWrite([
+      "messages", "forward",
+      "--chat", safeJid(input.fromTarget),
+      "--id", safeMessageId(input.messageId),
+      "--to", safeJid(input.target),
+    ]);
+    this.dialogCache.at = 0;
+  }
+
+  async createPoll(input) {
+    const options = asArray(input.options).map(option => String(option).trim()).filter(Boolean);
+    if (options.length < 2) throw new Error("A poll needs at least two options");
+    const args = [
+      "send", "poll",
+      "--to", safeJid(input.target),
+      "--question", String(input.question || "").trim(),
+      "--multi", String(input.multiple ? options.length : 1),
+    ];
+    for (const option of options) args.push("--option", option);
+    await this.runWrite(args);
+  }
+
+  async votePoll(input) {
+    const target = safeJid(input.target);
+    const cached = this.cachedMessage(target, safeMessageId(input.messageId));
+    const selected = asArray(input.options)
+      .map(index => cached?.poll?.options?.[Number(index)]?.text)
+      .filter(Boolean);
+    if (!selected.length) throw new Error("Select at least one poll option");
+    const args = ["poll", "vote", "--to", target, "--id", safeMessageId(input.messageId)];
+    for (const option of selected) args.push("--option", option);
+    await this.runWrite(args);
+  }
+
+  async createGroup(input) {
+    const args = ["groups", "create", "--name", String(input.name || "").trim()];
+    for (const member of asArray(input.members)) args.push("--user", safeJid(member));
+    await this.runWrite(args);
+    this.dialogCache.at = 0;
+  }
+
+  async updateGroup(input) {
+    const target = safeJid(input.target);
+    if (typeof input.name === "string" && input.name.trim()) {
+      await this.runWrite(["groups", "rename", "--jid", target, "--name", input.name.trim()]);
+    }
+    if (typeof input.description === "string") {
+      await this.runWrite(["groups", "topic", "--jid", target, "--text", input.description]);
+    }
+    if (Array.isArray(input.addMembers) && input.addMembers.length) {
+      const args = ["groups", "participants", "add", "--jid", target];
+      for (const member of input.addMembers) args.push("--user", safeJid(member));
+      await this.runWrite(args);
+    }
+    if (Array.isArray(input.removeMembers) && input.removeMembers.length) {
+      const args = ["groups", "participants", "remove", "--jid", target];
+      for (const member of input.removeMembers) args.push("--user", safeJid(member));
+      await this.runWrite(args);
+    }
+    this.dialogCache.at = 0;
+  }
+
+  async leaveGroup(input) {
+    await this.runWrite(["groups", "leave", "--jid", safeJid(input.target)]);
     this.dialogCache.at = 0;
   }
 
@@ -389,7 +510,7 @@ export class WhatsAppService {
     for await (const chunk of req) parts.push(chunk);
     await writeFile(tempPath, Buffer.concat(parts), { mode: 0o600 });
     try {
-      await this.run(["--lock-wait", "20s", "send", "file", "--to", target, "--file", tempPath, "--filename", filename, "--caption", caption]);
+      await this.runWrite(["send", "file", "--to", target, "--file", tempPath, "--filename", filename, "--caption", caption]);
       this.dialogCache.at = 0;
       return this.json(res, 200, { sent: true });
     } finally {
@@ -401,7 +522,7 @@ export class WhatsAppService {
     const cached = this.cachedMessage(safeJid(jid), safeMessageId(messageId));
     let path = cached?.attachments?.[0]?.localPath;
     if (!path || !(await stat(path).catch(() => null))?.isFile()) {
-      await this.run(["--lock-wait", "20s", "media", "download", "--chat", safeJid(jid), "--id", safeMessageId(messageId)]);
+      await this.runWrite(["media", "download", "--chat", safeJid(jid), "--id", safeMessageId(messageId)]);
       const refreshed = await this.messages(jid);
       path = refreshed.messages.find(message => message.id === messageId)?.attachments?.[0]?.localPath;
     }
@@ -437,9 +558,17 @@ export class WhatsAppService {
       this.dialogCache.at = 0;
       return json(res, 200, { ok: true });
     }
-    if (pathname === "/typing" && req.method === "POST") return json(res, 200, { ok: true });
+    if (pathname === "/typing" && req.method === "POST") { await this.setTyping(await body(req)); return json(res, 200, { ok: true }); }
     if (pathname === "/send" && req.method === "POST") return json(res, 200, { message: await this.sendText(await body(req)) });
     if (pathname === "/reaction" && req.method === "POST") { await this.sendReaction(await body(req)); return json(res, 200, { ok: true }); }
+    if (pathname === "/edit" && req.method === "POST") { await this.editMessage(await body(req)); return json(res, 200, { ok: true }); }
+    if (pathname === "/delete" && req.method === "POST") { await this.deleteMessage(await body(req)); return json(res, 200, { ok: true }); }
+    if (pathname === "/forward" && req.method === "POST") { await this.forwardMessage(await body(req)); return json(res, 200, { ok: true }); }
+    if (pathname === "/poll/create" && req.method === "POST") { await this.createPoll(await body(req)); return json(res, 200, { ok: true }); }
+    if (pathname === "/poll/vote" && req.method === "POST") { await this.votePoll(await body(req)); return json(res, 200, { ok: true }); }
+    if (pathname === "/group/create" && req.method === "POST") { await this.createGroup(await body(req)); return json(res, 200, { ok: true }); }
+    if (pathname === "/group/update" && req.method === "POST") { await this.updateGroup(await body(req)); return json(res, 200, { ok: true }); }
+    if (pathname === "/group/leave" && req.method === "POST") { await this.leaveGroup(await body(req)); return json(res, 200, { ok: true }); }
     if (pathname === "/conversation" && req.method === "POST") { await this.updateConversation(await body(req)); return json(res, 200, { ok: true }); }
     if (pathname === "/settings" && req.method === "GET") return json(res, 200, { settings: this.state.settings });
     if (pathname === "/settings" && req.method === "POST") { this.state.settings = { ...this.state.settings, ...(await body(req)) }; await this.persistState(); return json(res, 200, { settings: this.state.settings }); }
