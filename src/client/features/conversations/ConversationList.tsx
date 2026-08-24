@@ -48,11 +48,15 @@ function preview(conversation: UniversalConversation) {
 function Avatar({ conversation }: { conversation: UniversalConversation }) {
 	const source = useProtectedImage(conversation.avatarPath);
 	const className = `${styles.avatar} ${conversation.isNoteToSelf ? styles.noteAvatar : ''}`;
+	const serviceMark = conversation.serviceId === 'signal' ? 'S' : 'T';
 
 	return (
 		<span class={className} aria-hidden="true">
 			{conversation.isNoteToSelf ? '🔖' : initials(conversation.title)}
 			{source && <img src={source} alt="" />}
+			<span class={styles.serviceIcon} aria-label={`${conversation.serviceId} conversation`}>
+				{serviceMark}
+			</span>
 		</span>
 	);
 }
@@ -74,7 +78,6 @@ function ConversationRow({ conversation, onOpen, autoFocus }: { conversation: Un
 					{conversation.unreadCount > 0 && <span class={styles.unread}>{conversation.unreadCount}</span>}
 				</span>
 				<span class={styles.preview}>
-					<span class={styles.serviceBadge}>{conversation.serviceId}</span>
 					{preview(conversation)}
 				</span>
 			</span>

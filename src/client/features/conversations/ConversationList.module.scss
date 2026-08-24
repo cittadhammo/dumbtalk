@@ -84,6 +84,22 @@
 	object-fit: cover;
 }
 
+.serviceIcon {
+	position: absolute;
+	right: -2px;
+	bottom: -2px;
+	display: grid;
+	width: 13px;
+	height: 13px;
+	place-items: center;
+	background: #3a76f0;
+	border: 1px solid #0b1713;
+	border-radius: 50%;
+	box-shadow: 0 1px 3px #0008;
+	color: white;
+	font: 800 8px/1 system-ui, sans-serif;
+}
+
 .noteAvatar {
 	background: tokens.$blue;
 	font-size: 18px;
@@ -126,18 +142,6 @@
 	border-radius: 10px;
 	font-size: 11px;
 	text-align: center;
-}
-
-.serviceBadge {
-	display: inline-block;
-	margin-right: 4px;
-	padding: 1px 4px;
-	border: 1px solid #456357;
-	border-radius: 4px;
-	color: #aac3b8;
-	font-size: 8px;
-	font-weight: 700;
-	text-transform: uppercase;
 }
 
 .empty,
