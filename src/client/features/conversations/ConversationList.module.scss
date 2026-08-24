@@ -1,0 +1,151 @@
+@use '../../styles/tokens';
+
+.header {
+	position: sticky;
+	top: 0;
+	z-index: 2;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	height: 38px;
+	padding: 7px 10px;
+	background: linear-gradient(135deg, #15342a, #10201b 70%);
+	border-bottom: 1px solid tokens.$line;
+	box-shadow: 0 2px 8px #0005;
+	font-weight: 700;
+}
+
+.brand {
+	display: flex;
+	align-items: center;
+	gap: 7px;
+}
+
+.brand img {
+	width: 24px;
+	height: 24px;
+	border-radius: 6px;
+}
+
+.serviceCount {
+	padding: 2px 5px;
+	border: 1px solid #456357;
+	border-radius: 9px;
+	color: #afc7bc;
+	font-size: 9px;
+}
+
+.list {
+	padding: 3px 0 8px;
+}
+
+.row {
+	display: flex;
+	width: calc(100% - 10px);
+	min-height: 48px;
+	align-items: center;
+	gap: 7px;
+	margin: 3px 5px;
+	padding: 6px 8px;
+	border: 1px solid transparent;
+	border-radius: 8px;
+	background: linear-gradient(135deg, #162b24, #12231e);
+	color: tokens.$text;
+	text-align: left;
+}
+
+.row:focus {
+	border-color: #6c9fff;
+	box-shadow: 0 2px 8px #0006;
+}
+
+.avatar {
+	position: relative;
+	display: grid;
+	width: 34px;
+	height: 34px;
+	flex: 0 0 34px;
+	place-items: center;
+	overflow: hidden;
+	background: #31584b;
+	border: 1px solid #ffffff24;
+	border-radius: 50%;
+	box-shadow: 0 2px 7px #0007;
+	color: white;
+	font-size: 12px;
+	font-weight: 700;
+}
+
+.avatar img {
+	position: absolute;
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+}
+
+.noteAvatar {
+	background: tokens.$blue;
+	font-size: 18px;
+}
+
+.body {
+	display: block;
+	min-width: 0;
+	flex: 1;
+}
+
+.title,
+.preview {
+	display: block;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.preview {
+	margin-top: 2px;
+	color: tokens.$muted;
+	font-size: 12px;
+}
+
+.preview strong {
+	color: #cbd8d2;
+}
+
+.typing {
+	color: #65c991;
+	font-style: italic;
+}
+
+.unread {
+	float: right;
+	min-width: 18px;
+	padding: 1px 5px;
+	background: tokens.$blue;
+	border-radius: 10px;
+	font-size: 11px;
+	text-align: center;
+}
+
+.serviceBadge {
+	display: inline-block;
+	margin-right: 4px;
+	padding: 1px 4px;
+	border: 1px solid #456357;
+	border-radius: 4px;
+	color: #aac3b8;
+	font-size: 8px;
+	font-weight: 700;
+	text-transform: uppercase;
+}
+
+.empty,
+.error {
+	padding: 30px 15px;
+	color: tokens.$muted;
+	text-align: center;
+}
+
+.error {
+	color: #ff9399;
+}

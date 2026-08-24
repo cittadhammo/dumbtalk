@@ -1,8 +1,12 @@
 import { useCallback, useEffect, useState } from 'preact/hooks';
 import { api, ApiError, hasWidgetToken } from './api/client';
 import { FocusButton } from './components/FocusButton';
+import { ConversationList } from './features/conversations/ConversationList';
+import { ServicesScreen } from './features/services/ServicesScreen';
 import { FocusProvider, useFocusManager } from './platform/Focus';
 import { SoftkeyProvider, useSoftkeys } from './platform/Softkeys';
+import { MessagingServiceProvider } from './services/ServiceContext';
+import type { UniversalConversation } from './services/contracts';
 import styles from './styles/App.module.scss';
 
 type Status = {
@@ -99,6 +103,52 @@ function ErrorScreen({ message, retry }: { message: string; retry: () => void })
 	);
 }
 
+type Screen =
+	| { name: 'conversations'; archived: boolean }
+	| { name: 'services' }
+	| { name: 'conversation-placeholder'; conversation: UniversalConversation };
+
+function ConversationPlaceholder({ conversation, onBack }: { conversation: UniversalConversation; onBack: () => void }) {
+	const { activate } = useFocusManager();
+
+	useSoftkeys({
+		center: { label: 'Back', onPress: activate },
+		right: { label: 'Back', onPress: onBack },
+	}, [activate, onBack]);
+
+	return (
+		<main class={`${styles.screen} ${styles.centered}`}>
+			<img class={styles.logo} src="/sigdumb.png" alt="" />
+			<h1>{conversation.title}</h1>
+			<p>This conversation is ready through the universal Signal adapter. The Preact timeline is the next milestone.</p>
+			<FocusButton id="conversation-placeholder-back" type="button" onClick={onBack}>
+				Back to chats
+			</FocusButton>
+		</main>
+	);
+}
+
+function UnifiedApp() {
+	const [screen, setScreen] = useState<Screen>({ name: 'conversations', archived: false });
+
+	if (screen.name === 'services') {
+		return <ServicesScreen onBack={() => setScreen({ name: 'conversations', archived: false })} />;
+	}
+
+	if (screen.name === 'conversation-placeholder') {
+		return <ConversationPlaceholder conversation={screen.conversation} onBack={() => setScreen({ name: 'conversations', archived: false })} />;
+	}
+
+	return (
+		<ConversationList
+			archived={screen.archived}
+			onServices={() => setScreen({ name: 'services' })}
+			onArchived={() => setScreen({ name: 'conversations', archived: !screen.archived })}
+			onOpen={(conversation) => setScreen({ name: 'conversation-placeholder', conversation })}
+		/>
+	);
+}
+
 function Boot() {
 	const [status, setStatus] = useState<Status>();
 	const [error, setError] = useState<string>();
@@ -128,7 +178,15 @@ function Boot() {
 		return <StartupScreen />;
 	}
 
-	return <FoundationScreen status={status} retry={load} />;
+	if (!status.signalReady || !status.linked) {
+		return <FoundationScreen status={status} retry={load} />;
+	}
+
+	return (
+		<MessagingServiceProvider>
+			<UnifiedApp />
+		</MessagingServiceProvider>
+	);
 }
 
 export function App() {
