@@ -81,26 +81,14 @@ function MessageBubble({
 
 function MessageActions({
 	message,
-	onBack,
 	onReply,
 	onReact,
 }: {
 	message: UniversalMessage;
-	onBack: () => void;
 	onReply: () => void;
 	onReact: (emoji: string) => void;
 }) {
-	const { activate, focus } = useFocusManager();
 	const reactions = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
-
-	useEffect(() => {
-		focus('message-action-reply');
-	}, [focus]);
-
-	useSoftkeys({
-		center: { label: 'Select', onPress: activate },
-		right: { label: 'Back', onPress: onBack },
-	}, [activate, onBack]);
 
 	return (
 		<main class={styles.actionScreen}>
@@ -114,7 +102,6 @@ function MessageActions({
 					id="message-action-reply"
 					type="button"
 					class={styles.action}
-					autoFocus
 					onClick={onReply}
 				>
 					<span class={styles.actionIcon}>↩</span>
@@ -329,6 +316,8 @@ export function ChatRoom({ conversation, onBack }: Props) {
 		if (!first) return;
 
 		setOlderNotice(undefined);
+		captureAnchor();
+		pendingFocus.current = anchor.current?.id;
 		void load(first.sentAt).then((next) => {
 			if (next && next.messages.length === 0) setOlderNotice('No older cached messages.');
 		});
@@ -366,6 +355,12 @@ export function ChatRoom({ conversation, onBack }: Props) {
 		if (message) setActionMessage(message);
 	};
 
+	const closeMessageActions = () => {
+		const messageId = actionMessage?.id;
+		setActionMessage(undefined);
+		if (messageId) window.requestAnimationFrame(() => focus(`message-${messageId}`));
+	};
+
 	const replyToMessage = () => {
 		if (!actionMessage) return;
 		setReplying(actionMessage);
@@ -381,19 +376,26 @@ export function ChatRoom({ conversation, onBack }: Props) {
 		setActionMessage(undefined);
 	};
 
+	useEffect(() => {
+		if (!actionMessage) return;
+		window.requestAnimationFrame(() => focus('message-action-reply'));
+	}, [actionMessage?.id, focus]);
+
 	useSoftkeys({
-		left: selectedMessageId ? { label: 'Message', onPress: openMessageActions } : undefined,
-		center: {
-			label: composeControl === 'clear' ? 'Clear' : composeControl === 'latest' ? 'Latest' : composerFocused ? 'Type' : selectedMessageId ? 'Open' : 'Type',
-			onPress: () => {
-				if (composeControl) activate();
-				else if (composerFocused) inputRef.current?.focus();
-				else if (selectedMessageId) openMessageActions();
-				else inputRef.current?.focus();
+		left: actionMessage ? undefined : selectedMessageId ? { label: 'Message', onPress: openMessageActions } : undefined,
+		center: actionMessage
+			? { label: 'Select', onPress: activate }
+			: {
+				label: composeControl === 'clear' ? 'Clear' : composeControl === 'latest' ? 'Latest' : composerFocused ? 'Type' : selectedMessageId ? 'Open' : 'Type',
+				onPress: () => {
+					if (composeControl) activate();
+					else if (composerFocused) inputRef.current?.focus();
+					else if (selectedMessageId) openMessageActions();
+					else inputRef.current?.focus();
+				},
 			},
-		},
-		right: { label: 'Back', onPress: onBack },
-	}, [composeControl, composerFocused, onBack, selectedMessageId]);
+		right: { label: 'Back', onPress: actionMessage ? closeMessageActions : onBack },
+	}, [actionMessage, composeControl, composerFocused, onBack, selectedMessageId, activate]);
 
 	let currentDay = '';
 	let unreadShown = false;
@@ -403,7 +405,6 @@ export function ChatRoom({ conversation, onBack }: Props) {
 		return (
 			<MessageActions
 				message={actionMessage}
-				onBack={() => setActionMessage(undefined)}
 				onReply={replyToMessage}
 				onReact={reactToMessage}
 			/>
@@ -417,17 +418,6 @@ export function ChatRoom({ conversation, onBack }: Props) {
 				<span class={styles.service}>{conversation.serviceId}</span>
 			</header>
 			<section class={styles.timeline} ref={timelineRef} onScroll={markReadAtBottom}>
-				{!atBottom && (
-					<FocusButton
-						id="chat-jump-latest"
-						class={styles.floatingLatest}
-						type="button"
-						onClick={jumpToLatest}
-						aria-label="Jump to latest message"
-					>
-						↓
-					</FocusButton>
-				)}
 				{page && (
 					<FocusButton
 						id="load-older-messages"
@@ -453,7 +443,7 @@ export function ChatRoom({ conversation, onBack }: Props) {
 					const showSender = conversation.kind === 'group' && message.direction === 'incoming' && !sameIncomingSender;
 					const previousMinute = previousMessage ? Math.floor(previousMessage.sentAt / 60_000) : undefined;
 					const showTime = previousMinute !== Math.floor(message.sentAt / 60_000);
-					const groupStart = !sameIncomingSender && Boolean(previousMessage);
+					const groupStart = !sameIncomingSender && Boolean(previousMessage) && !showSender;
 					previousMessage = message;
 
 					return (
@@ -495,6 +485,17 @@ export function ChatRoom({ conversation, onBack }: Props) {
 					</div>
 				) : null}
 			</section>
+			{!atBottom && (
+				<FocusButton
+					id="chat-jump-latest"
+					class={styles.floatingLatest}
+					type="button"
+					onClick={jumpToLatest}
+					aria-label="Jump to latest message"
+				>
+					↓
+				</FocusButton>
+			)}
 			<form class={styles.compose} ref={formRef} onSubmit={send}>
 				{replying && (
 					<div class={styles.replying}>

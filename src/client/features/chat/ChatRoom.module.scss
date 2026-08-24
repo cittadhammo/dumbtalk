@@ -1,6 +1,7 @@
 @use '../../styles/tokens';
 
 .room {
+	position: relative;
 	display: grid;
 	width: 100%;
 	max-width: 100%;
@@ -143,7 +144,7 @@
 
 .sender {
 	display: block;
-	margin: 7px 0 1px 4px;
+	margin: 7px 0 0 4px;
 	color: #9fc4ff;
 	font-size: 11px;
 }
@@ -173,15 +174,15 @@
 }
 
 .floatingLatest {
-	position: sticky;
-	bottom: 8px;
-	left: 0;
+	position: absolute;
+	bottom: 38px;
+	left: 7px;
 	z-index: 3;
 	display: grid;
 	width: 27px;
 	height: 27px;
 	place-items: center;
-	margin: 0 0 -27px;
+	margin: 0;
 	background: #28473c;
 	border: 1px solid #638c7e;
 	border-radius: 50%;
