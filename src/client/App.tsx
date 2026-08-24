@@ -1,0 +1,138 @@
+import { useCallback, useEffect, useState } from 'preact/hooks';
+import { api, ApiError, hasWidgetToken } from './api/client';
+import { FocusButton } from './components/FocusButton';
+import { FocusProvider, useFocusManager } from './platform/Focus';
+import { SoftkeyProvider, useSoftkeys } from './platform/Softkeys';
+
+type Status = {
+	signalReady: boolean;
+	linked: boolean;
+};
+
+function FoundationScreen({ status, retry }: { status?: Status; retry: () => void }) {
+	const { activate, focus } = useFocusManager();
+
+	useSoftkeys({
+		left: { label: 'Focus', onPress: () => focus('foundation-0') },
+		center: { label: 'Select', onPress: activate },
+		right: { label: 'Exit', onPress: () => window.close() },
+	}, []);
+
+	const checks = ['Soft-key actions', 'D-pad focus', 'QVGA layout'];
+
+	return (
+		<main class="screen foundation-screen">
+			<header>
+				<span class="brand-title">
+					<img src="/sigdumb.png" alt="" />
+					SigDumb
+				</span>
+				<span class="foundation-badge">Rebuild</span>
+			</header>
+			<section class="foundation-card">
+				<p class="eyebrow">Milestones 1–2</p>
+				<h1>CloudPhone foundation</h1>
+				<p>
+					{status?.linked
+						? 'Your existing Signal link and data are intact. The rebuilt conversation screens follow next.'
+						: 'Checking the existing Signal service…'}
+				</p>
+				<div class="focus-demo" aria-label="D-pad focus demonstration">
+					{checks.map((label, index) => (
+						<FocusButton
+							id={`foundation-${index}`}
+							grid="foundation"
+							type="button"
+							onClick={() => undefined}
+						>
+							<span>{label}</span>
+							<span>›</span>
+						</FocusButton>
+					))}
+				</div>
+				<FocusButton
+					id="foundation-retry"
+					type="button"
+					class="primary"
+					onClick={retry}
+				>
+					Refresh status
+				</FocusButton>
+			</section>
+		</main>
+	);
+}
+
+function StartupScreen() {
+	useSoftkeys({
+		right: { label: 'Exit', onPress: () => window.close() },
+	}, []);
+
+	return (
+		<main class="screen centered">
+			<img class="brand-logo" src="/sigdumb.png" alt="" />
+			<p>Starting SigDumb…</p>
+		</main>
+	);
+}
+
+function ErrorScreen({ message, retry }: { message: string; retry: () => void }) {
+	const { activate } = useFocusManager();
+
+	useSoftkeys({
+		center: { label: 'Retry', onPress: activate },
+		right: { label: 'Exit', onPress: () => window.close() },
+	}, []);
+
+	return (
+		<main class="screen centered">
+			<img class="brand-logo" src="/sigdumb.png" alt="" />
+			<p class="error">{message}</p>
+			<FocusButton id="startup-retry" type="button" onClick={retry}>
+				Retry
+			</FocusButton>
+		</main>
+	);
+}
+
+function Boot() {
+	const [status, setStatus] = useState<Status>();
+	const [error, setError] = useState<string>();
+
+	const load = useCallback(() => {
+		if (!hasWidgetToken()) {
+			setError('This widget is not configured.');
+			return;
+		}
+
+		setError(undefined);
+		void api<Status>('/api/status')
+			.then(setStatus)
+			.catch((reason: unknown) => {
+				const failure = reason as ApiError;
+				setError(failure.status === 404 ? 'This widget is not configured.' : failure.message);
+			});
+	}, []);
+
+	useEffect(load, [load]);
+
+	if (error) {
+		return <ErrorScreen message={error} retry={load} />;
+	}
+
+	if (!status) {
+		return <StartupScreen />;
+	}
+
+	return <FoundationScreen status={status} retry={load} />;
+}
+
+export function App() {
+	return (
+		<SoftkeyProvider>
+			<FocusProvider>
+				<Boot />
+			</FocusProvider>
+		</SoftkeyProvider>
+	);
+}
