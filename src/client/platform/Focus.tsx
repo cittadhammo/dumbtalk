@@ -1,5 +1,5 @@
 import { createContext, type ComponentChildren, type RefCallback } from 'preact';
-import { useContext, useEffect, useMemo, useRef } from 'preact/hooks';
+import { useCallback, useContext, useEffect, useMemo, useRef } from 'preact/hooks';
 
 export type ArrowKey = 'ArrowUp' | 'ArrowDown' | 'ArrowLeft' | 'ArrowRight';
 
@@ -15,7 +15,8 @@ type Item = FocusRegistration & {
 };
 
 type ContextValue = {
-	register: (registration: FocusRegistration) => RefCallback<HTMLElement>;
+	upsert: (item: Item) => void;
+	remove: (id: string) => void;
 	focus: (id: string) => void;
 	activate: () => void;
 };
@@ -26,30 +27,29 @@ export function FocusProvider({ children }: { children: ComponentChildren }) {
 	const items = useRef(new Map<string, Item>());
 	const activeId = useRef<string>();
 
-	const focus = (id: string) => {
+	const focus = useCallback((id: string) => {
 		const item = items.current.get(id);
 		item?.element.focus({ preventScroll: true });
 		item?.element.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-	};
+	}, []);
 
-	const activate = () => {
+	const upsert = useCallback((item: Item) => {
+		items.current.set(item.id, item);
+		if (!item.initial || activeId.current) return;
+
+		requestAnimationFrame(() => {
+			if (!activeId.current && items.current.get(item.id)?.element === item.element) focus(item.id);
+		});
+	}, [focus]);
+
+	const remove = useCallback((id: string) => {
+		items.current.delete(id);
+		if (activeId.current === id) activeId.current = undefined;
+	}, []);
+
+	const activate = useCallback(() => {
 		const active = activeId.current ? items.current.get(activeId.current) : undefined;
 		active?.element.click();
-	};
-
-	const register = useMemo<ContextValue['register']>(() => (registration) => (element) => {
-		if (!element) {
-			items.current.delete(registration.id);
-			if (activeId.current === registration.id) activeId.current = undefined;
-			return;
-		}
-
-		items.current.set(registration.id, { ...registration, element });
-		if (registration.initial) {
-			requestAnimationFrame(() => {
-				if (!activeId.current && items.current.get(registration.id)?.element === element) focus(registration.id);
-			});
-		}
 	}, []);
 
 	useEffect(() => {
@@ -101,10 +101,12 @@ export function FocusProvider({ children }: { children: ComponentChildren }) {
 			document.removeEventListener('focusin', onFocus);
 			window.removeEventListener('keydown', onKeyDown);
 		};
-	}, []);
+	}, [focus]);
+
+	const value = useMemo<ContextValue>(() => ({ upsert, remove, focus, activate }), [activate, focus, remove, upsert]);
 
 	return (
-		<FocusContext.Provider value={{ register, focus, activate }}>
+		<FocusContext.Provider value={value}>
 			{children}
 		</FocusContext.Provider>
 	);
@@ -114,7 +116,23 @@ export function useFocusable(registration: FocusRegistration): RefCallback<HTMLE
 	const context = useContext(FocusContext);
 	if (!context) throw new Error('useFocusable must be used inside FocusProvider');
 
-	return context.register(registration);
+	const element = useRef<HTMLElement | null>(null);
+	const registrationRef = useRef(registration);
+	registrationRef.current = registration;
+
+	const ref = useCallback<RefCallback<HTMLElement>>((next) => {
+		element.current = next;
+		if (next) context.upsert({ ...registrationRef.current, element: next });
+		else context.remove(registrationRef.current.id);
+	}, [context]);
+
+	useEffect(() => {
+		if (element.current) context.upsert({ ...registration, element: element.current });
+	}, [context, registration]);
+
+	useEffect(() => () => context.remove(registrationRef.current.id), [context]);
+
+	return ref;
 }
 
 export function useFocusManager(): Pick<ContextValue, 'focus' | 'activate'> {

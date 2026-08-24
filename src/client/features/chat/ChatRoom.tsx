@@ -136,7 +136,7 @@ function MessageActions({
 
 export function ChatRoom({ conversation, onBack }: Props) {
 	const { serviceFor } = useMessagingServices();
-	const { focus } = useFocusManager();
+	const { activate, focus } = useFocusManager();
 	const service = serviceFor(conversation.serviceId);
 	const [page, setPage] = useState<MessagePage | undefined>(() => readMessagePage(conversation.id));
 	const [draft, setDraft] = useState(() => localStorage.getItem(`draft:${conversation.id}`) ?? '');
@@ -145,6 +145,7 @@ export function ChatRoom({ conversation, onBack }: Props) {
 	const [atBottom, setAtBottom] = useState(true);
 	const [selectedMessageId, setSelectedMessageId] = useState<string>();
 	const [composerFocused, setComposerFocused] = useState(false);
+	const [composeControl, setComposeControl] = useState<'clear' | 'latest'>();
 	const [actionMessage, setActionMessage] = useState<UniversalMessage>();
 	const [replying, setReplying] = useState<UniversalMessage>();
 	const timelineRef = useRef<HTMLElement>(null);
@@ -337,6 +338,13 @@ export function ChatRoom({ conversation, onBack }: Props) {
 		inputRef.current?.focus({ preventScroll: true });
 	};
 
+	const focusLastMessage = () => {
+		const message = [...(page?.messages ?? [])].reverse().find((candidate) => candidate.direction !== 'system');
+		if (!message) return false;
+		focus(`message-${message.id}`);
+		return true;
+	};
+
 	const openMessageActions = () => {
 		const message = page?.messages.find((candidate) => candidate.id === selectedMessageId);
 		if (message) setActionMessage(message);
@@ -360,15 +368,16 @@ export function ChatRoom({ conversation, onBack }: Props) {
 	useSoftkeys({
 		left: selectedMessageId ? { label: 'Message', onPress: openMessageActions } : undefined,
 		center: {
-			label: composerFocused ? 'Send' : selectedMessageId ? 'Open' : 'Type',
+			label: composeControl === 'clear' ? 'Clear' : composeControl === 'latest' ? 'Latest' : composerFocused ? 'Send' : selectedMessageId ? 'Open' : 'Type',
 			onPress: () => {
-				if (composerFocused) formRef.current?.requestSubmit();
+				if (composeControl) activate();
+				else if (composerFocused) formRef.current?.requestSubmit();
 				else if (selectedMessageId) openMessageActions();
 				else inputRef.current?.focus();
 			},
 		},
 		right: { label: 'Back', onPress: onBack },
-	}, [composerFocused, onBack, selectedMessageId, page]);
+	}, [composeControl, composerFocused, onBack, selectedMessageId, page]);
 
 	let currentDay = '';
 	let unreadShown = false;
@@ -429,6 +438,7 @@ export function ChatRoom({ conversation, onBack }: Props) {
 									pendingFocus.current = message.id;
 									setSelectedMessageId(message.id);
 									setComposerFocused(false);
+									setComposeControl(undefined);
 								}}
 								onArrow={(key) => scrollWithinMessage(message.id, key)}
 							/>
@@ -451,14 +461,36 @@ export function ChatRoom({ conversation, onBack }: Props) {
 					</div>
 				)}
 				{draft && (
-					<button class={styles.utility} type="button" onClick={clearDraft} aria-label="Clear draft">
+					<FocusButton
+						id="chat-clear-draft"
+						class={styles.utility}
+						type="button"
+						onFocus={() => {
+							setComposeControl('clear');
+							setComposerFocused(false);
+							setSelectedMessageId(undefined);
+						}}
+						onClick={clearDraft}
+						aria-label="Clear draft"
+					>
 						×
-					</button>
+					</FocusButton>
 				)}
 				{!draft && !atBottom && (
-					<button class={styles.utility} type="button" onClick={jumpToLatest} aria-label="Jump to latest message">
+					<FocusButton
+						id="chat-jump-latest"
+						class={styles.utility}
+						type="button"
+						onFocus={() => {
+							setComposeControl('latest');
+							setComposerFocused(false);
+							setSelectedMessageId(undefined);
+						}}
+						onClick={jumpToLatest}
+						aria-label="Jump to latest message"
+					>
 						↓
-					</button>
+					</FocusButton>
 				)}
 				<FocusInput
 					id="chat-compose"
@@ -470,6 +502,13 @@ export function ChatRoom({ conversation, onBack }: Props) {
 					onFocus={() => {
 						setComposerFocused(true);
 						setSelectedMessageId(undefined);
+						setComposeControl(undefined);
+					}}
+					onArrow={(key) => key === 'ArrowUp' ? focusLastMessage() : false}
+					onKeyDown={(event) => {
+						if (event.key !== 'Enter') return;
+						event.preventDefault();
+						formRef.current?.requestSubmit();
 					}}
 					onInput={(event) => updateDraft(event.currentTarget.value)}
 				/>

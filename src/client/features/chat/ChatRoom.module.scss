@@ -2,10 +2,13 @@
 
 .room {
 	display: grid;
+	width: 100%;
+	max-width: 100%;
 	height: 100%;
 	min-height: 0;
 	grid-template-rows: 29px minmax(0, 1fr) auto;
 	background: tokens.$background;
+	overflow: hidden;
 }
 
 .header {
@@ -229,6 +232,7 @@
 .compose {
 	position: relative;
 	display: flex;
+	min-width: 0;
 	padding: 2px;
 	background: #10201b;
 	border-top: 1px solid tokens.$line;
@@ -264,6 +268,7 @@
 }
 
 .compose input {
+	width: 0;
 	min-width: 0;
 	height: 28px;
 	flex: 1;
