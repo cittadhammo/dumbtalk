@@ -407,6 +407,7 @@ export class WhatsAppService {
     if (typeof input.archived === "boolean") await this.runWrite(["chats", input.archived ? "archive" : "unarchive", "--chat", jid]);
     if (typeof input.muted === "boolean") await this.runWrite(["chats", input.muted ? "mute" : "unmute", "--chat", jid]);
     if (typeof input.favourite === "boolean") {
+      await this.runWrite(["chats", input.favourite ? "pin" : "unpin", "--chat", jid]);
       this.state.favourites = input.favourite
         ? [...new Set([...this.state.favourites, jid])]
         : this.state.favourites.filter(item => item !== jid);
