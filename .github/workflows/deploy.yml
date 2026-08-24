@@ -36,6 +36,14 @@ jobs:
           node --check public/app.js
           npm test
 
+      - name: Build and stage Preact frontend for refactor branch
+        if: github.ref == 'refs/heads/refactor/preact-client'
+        run: |
+          set -euo pipefail
+          npm run typecheck:client
+          npm run build:client
+          cp -a public-next/. public/
+
       - name: Join tailnet
         uses: tailscale/github-action@v4
         with:
@@ -69,6 +77,7 @@ jobs:
             --exclude=data \
             --exclude=node_modules \
             --exclude=.github \
+            --exclude=public-next \
             -C . -czf - . | ssh \
               -i "$HOME/.ssh/id_ed25519" \
               -o BatchMode=yes \
