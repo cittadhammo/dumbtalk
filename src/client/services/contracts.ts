@@ -24,6 +24,14 @@ export type ServiceSetupStep =
 			image: string;
 	  }
 	| {
+			kind: 'pair-code';
+			token: string;
+			title: string;
+			instructions: string;
+			code: string;
+			phone: string;
+	  }
+	| {
 			kind: 'input';
 			token: string;
 			title: string;

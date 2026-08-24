@@ -80,6 +80,7 @@ export class WhatsAppService {
     this.authProcess = null;
     this.syncProcess = null;
     this.qr = null;
+    this.pairCode = null;
     this.lastError = null;
     this.accountLabel = null;
     this.state = { favourites: [], settings: { ...DEFAULT_SETTINGS } };
@@ -137,6 +138,7 @@ export class WhatsAppService {
       authStage: this.isLinked() ? "authorized" : this.authProcess ? "qr" : "qr",
       accountLabel: this.accountLabel || undefined,
       qr: this.qr,
+      pairCode: this.pairCode,
       error: this.lastError || undefined,
     };
   }
@@ -172,13 +174,22 @@ export class WhatsAppService {
     return this.run(["--lock-wait", "20s", ...args]);
   }
 
-  async beginSetup() {
+  async beginSetup(phone = "") {
     if (this.isLinked()) return this.statusPayload();
     if (this.authProcess) return this.statusPayload();
     this.lastError = null;
     this.qr = null;
+    this.pairCode = null;
 
-    const child = spawn(WACLI, ["--store", this.dataDir, "--events", "auth", "--qr-format", "text", "--download-media"], {
+    const normalizedPhone = String(phone).replace(/[\s().-]/g, "");
+    if (normalizedPhone && !/^\+?[1-9]\d{6,14}$/.test(normalizedPhone)) {
+      throw new Error("Enter your full phone number, including country code");
+    }
+    const authArgs = ["--store", this.dataDir, "--events", "auth", "--download-media"];
+    if (normalizedPhone) authArgs.push("--phone", normalizedPhone);
+    else authArgs.push("--qr-format", "text");
+
+    const child = spawn(WACLI, authArgs, {
       env: { ...process.env, WACLI_STORE_DIR: this.dataDir },
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -194,6 +205,11 @@ export class WhatsAppService {
         let code = candidate;
         try {
           const event = JSON.parse(candidate);
+          if (event?.event === "pair_code") {
+            const pairCode = String(event?.data?.code || "").trim();
+            if (pairCode) this.pairCode = { code: pairCode, phone: String(event?.data?.phone || normalizedPhone) };
+            continue;
+          }
           code = event?.data?.code || event?.code || "";
         } catch {}
         if (!code || code === this.qr?.url) continue;
@@ -213,8 +229,8 @@ export class WhatsAppService {
       if (code && !this.isLinked()) this.lastError = "WhatsApp linking did not complete";
       if (this.isLinked()) this.startSync();
     });
-    for (let attempt = 0; attempt < 60 && !this.qr && this.authProcess === child; attempt++) await delay(100);
-    if (!this.qr) throw new Error(this.lastError || "WhatsApp did not provide a QR code");
+    for (let attempt = 0; attempt < 60 && !this.qr && !this.pairCode && this.authProcess === child; attempt++) await delay(100);
+    if (!this.qr && !this.pairCode) throw new Error(this.lastError || "WhatsApp did not provide a linking code");
     return this.statusPayload();
   }
 
@@ -255,6 +271,7 @@ export class WhatsAppService {
     await mkdir(this.mediaDir, { recursive: true });
     this.accountLabel = null;
     this.qr = null;
+    this.pairCode = null;
     this.dialogCache = { at: 0, values: [] };
     this.messageCache.clear();
   }
@@ -577,6 +594,7 @@ export class WhatsAppService {
     const pathname = url.pathname.slice(root.length) || "/";
     if (pathname === "/status" && req.method === "GET") return json(res, 200, this.statusPayload());
     if (pathname === "/auth/qr/start" && req.method === "POST") return json(res, 200, await this.beginSetup());
+    if (pathname === "/auth/phone/start" && req.method === "POST") return json(res, 200, await this.beginSetup((await body(req)).phone));
     if (pathname === "/auth/qr/poll" && req.method === "GET") return json(res, 200, await this.pollSetup());
     if (pathname === "/disconnect" && req.method === "POST") { await this.disconnect(); return json(res, 200, { disconnected: true }); }
     if (!this.isLinked()) return json(res, 409, { error: "WhatsApp is not linked" });

@@ -220,7 +220,7 @@ function SetupServiceScreen({
 	}, [attempt, service]);
 
 	useEffect(() => {
-		if (step?.kind !== 'qr') return;
+		if (step?.kind !== 'qr' && step?.kind !== 'pair-code') return;
 		let active = true;
 		void service
 			.advanceSetup(step)
@@ -233,7 +233,7 @@ function SetupServiceScreen({
 		return () => {
 			active = false;
 		};
-	}, [service, step?.kind === 'qr' ? step.token : undefined]);
+	}, [service, step?.kind === 'qr' || step?.kind === 'pair-code' ? step.token : undefined]);
 
 	useEffect(() => {
 		setInputValue('');
@@ -289,6 +289,14 @@ function SetupServiceScreen({
 						<img class={styles.qr} src={step.image} alt={`${service.label} linking QR code`} />
 						<p>{step.instructions}</p>
 						<p class={styles.waiting}>Waiting for {service.label}…</p>
+					</>
+				)}
+				{step?.kind === 'pair-code' && (
+					<>
+						<p>{step.instructions}</p>
+						<output class={styles.pairCode} aria-label="WhatsApp linking code">{step.code}</output>
+						<p class={styles.note}>Enter this code for {step.phone} on your phone. Keep this screen open while WhatsApp links.</p>
+						<p class={styles.waiting}>Waiting for WhatsApp…</p>
 					</>
 				)}
 				{step?.kind === 'choice' && (

@@ -126,8 +126,11 @@ test('WhatsApp is registered as a linked-device universal messaging service', as
 	assert.match(registry, /whatsappService/);
 	assert.match(adapter, /Link WhatsApp/);
 	assert.match(adapter, /auth\/qr\/start/);
+	assert.match(adapter, /auth\/phone\/start/);
 	assert.match(adapter, /serviceId: 'whatsapp'/);
-	assert.match(service, /"auth", "--qr-format", "text"/);
+	assert.match(service, /authArgs\.push\("--phone"/);
+	assert.match(service, /authArgs\.push\("--qr-format", "text"/);
+	assert.match(service, /pair_code/);
 	assert.match(service, /"sync", "--follow"/);
 	assert.match(service, /"chats", "mark-read"/);
 });

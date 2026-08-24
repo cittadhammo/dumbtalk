@@ -19,6 +19,7 @@ type WhatsAppStatus = {
 	authStage: string;
 	accountLabel?: string;
 	qr?: { url: string; image: string };
+	pairCode?: { code: string; phone: string };
 	error?: string;
 };
 
@@ -168,36 +169,38 @@ export const whatsappService: MessagingService = {
 	},
 
 	async beginSetup() {
-		const status = await api<WhatsAppStatus>(`${ROOT}/auth/qr/start`, { method: 'POST' });
-		if (status.connected) {
-			return {
-				kind: 'complete',
-				title: 'WhatsApp connected',
-				instructions: 'Your WhatsApp chats will now appear in the shared inbox.',
-			};
-		}
-		if (!status.qr) throw new Error(status.error || 'WhatsApp did not provide a QR code');
 		return {
-			kind: 'qr',
-			token: status.qr.url,
+			kind: 'choice',
+			token: 'whatsapp-link-method',
 			title: 'Link WhatsApp',
-			instructions: 'WhatsApp → Settings → Linked devices → Link a device',
-			image: status.qr.image,
+			instructions: 'Choose how to pair this linked device.',
+			choices: [
+				{ value: 'qr', label: 'Scan QR', description: 'Use WhatsApp → Linked devices → Link a device.' },
+				{ value: 'phone', label: 'Use linking code', description: 'Enter a short code on your phone instead.' },
+			],
 		};
 	},
 
-	async advanceSetup(step) {
-		if (step.kind !== 'qr') throw new Error('Unexpected WhatsApp setup step');
-		const status = await api<WhatsAppStatus>(`${ROOT}/auth/qr/poll`);
-		if (status.connected) {
-			return {
-				kind: 'complete',
-				title: 'WhatsApp connected',
-				instructions: 'Your WhatsApp chats will now appear in the shared inbox.',
-			};
+	async advanceSetup(step, input) {
+		if (step.kind === 'choice') {
+			if (input === 'phone') {
+				return {
+					kind: 'input', token: 'whatsapp-phone', title: 'Phone number',
+					instructions: 'Enter the WhatsApp number, including country code.', field: 'phone', placeholder: '+44…',
+				};
+			}
+			const status = await api<WhatsAppStatus>(`${ROOT}/auth/qr/start`, { method: 'POST' });
+			return setupStep(status);
 		}
+		if (step.kind === 'input' && step.token === 'whatsapp-phone') {
+			const status = await api<WhatsAppStatus>(`${ROOT}/auth/phone/start`, { method: 'POST', body: JSON.stringify({ phone: input }) });
+			return setupStep(status);
+		}
+		if (step.kind !== 'qr' && step.kind !== 'pair-code') throw new Error('Unexpected WhatsApp setup step');
+		const status = await api<WhatsAppStatus>(`${ROOT}/auth/qr/poll`);
+		if (status.connected) return setupStep(status);
 		if (status.qr && status.qr.url !== step.token) {
-			return { ...step, token: status.qr.url, image: status.qr.image };
+			return setupStep(status);
 		}
 		if (status.error) throw new Error(status.error);
 		return step;
@@ -417,3 +420,13 @@ export const whatsappService: MessagingService = {
 	async getSafetyNumber() { unsupported('Safety numbers'); },
 	async trustSafetyNumber() { unsupported('Safety numbers'); },
 };
+
+function setupStep(status: WhatsAppStatus): ServiceSetupStep {
+	if (status.connected) return { kind: 'complete', title: 'WhatsApp connected', instructions: 'Your WhatsApp chats will now appear in the shared inbox.' };
+	if (status.pairCode) return {
+		kind: 'pair-code', token: status.pairCode.code, code: status.pairCode.code, phone: status.pairCode.phone,
+		title: 'Enter linking code', instructions: 'WhatsApp → Linked devices → Link a device → Link with phone number.',
+	};
+	if (status.qr) return { kind: 'qr', token: status.qr.url, title: 'Link WhatsApp', instructions: 'WhatsApp → Settings → Linked devices → Link a device', image: status.qr.image };
+	throw new Error(status.error || 'WhatsApp did not provide a linking code');
+}
