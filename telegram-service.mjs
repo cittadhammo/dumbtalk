@@ -13,6 +13,10 @@ const DEFAULT_SETTINGS = {
 };
 
 const FALLBACK_REACTIONS = ["👍", "👎", "❤️", "🔥", "🥰", "👏"];
+const DIALOG_CACHE_MS = 60_000;
+const HISTORY_CACHE_MS = 30_000;
+const PAGED_HISTORY_CACHE_MS = 60 * 60_000;
+const ALLOWED_REACTIONS_CACHE_MS = 10 * 60_000;
 
 function delay(milliseconds) {
   return new Promise(resolve => setTimeout(resolve, milliseconds));
@@ -94,10 +98,19 @@ function pollFromMessage(message) {
 function errorCode(error) {
   return String(
     error?.errorMessage ||
+      error?.text ||
       error?.message ||
       error?.code ||
       "Telegram request failed",
   );
+}
+
+function floodWaitSeconds(error) {
+  const explicit = Number(error?.seconds);
+  if (Number.isFinite(explicit) && explicit > 0) return Math.ceil(explicit);
+
+  const match = errorCode(error).match(/(?:FLOOD|SLOWMODE)(?:_[A-Z]+)*_WAIT_(\d+)/i);
+  return match ? Math.max(1, Number(match[1])) : error?.code === 420 ? 60 : 0;
 }
 
 function inputTarget(value) {
@@ -127,10 +140,17 @@ export class TelegramService {
     this.qrAbort = null;
     this.qrPassword = null;
     this.messageCache = new Map();
-    this.dialogCache = { at: 0, values: [] };
+    this.dialogCache = { at: 0, values: [], loaded: false };
+    this.dialogRefresh = null;
+    this.historyCache = new Map();
+    this.historyRefreshes = new Map();
+    this.allowedReactionCache = new Map();
+    this.floodUntil = 0;
     this.reactionCache = { at: 0, values: [] };
     this.typing = new Map();
     this.mediaDownloads = new Map();
+    this.avatarSources = new Map();
+    this.avatarDownloads = new Map();
     this.detailCache = new Map();
     this.state = { favourites: [], settings: { ...DEFAULT_SETTINGS } };
   }
@@ -158,13 +178,37 @@ export class TelegramService {
   }
 
   bindUpdates() {
-    const invalidate = () => {
-      this.dialogCache.at = 0;
-    };
-
-    this.client.onNewMessage.add(invalidate);
-    this.client.onEditMessage.add(invalidate);
-    this.client.onDeleteMessage.add(invalidate);
+    this.client.onNewMessage.add(message => {
+      const dialog = this.cachedConversation(peerId(message.chat));
+      if (!dialog) {
+        this.invalidateMessageViews();
+        return;
+      }
+      const normalized = this.normalizeMessage(message, dialog);
+      dialog.last = normalized;
+      if (normalized.direction === "in") dialog.unread += 1;
+      this.dialogCache.at = Date.now();
+      this.historyCache.clear();
+    });
+    this.client.onEditMessage.add(message => {
+      const dialog = this.cachedConversation(peerId(message.chat));
+      if (dialog?.last?.telegramId === message.id) {
+        dialog.last = this.normalizeMessage(message, dialog);
+      }
+      this.historyCache.clear();
+    });
+    this.client.onDeleteMessage.add(() => this.invalidateMessageViews());
+    this.client.onHistoryRead.add(update => {
+      const dialog = this.cachedConversation(update.chatId);
+      if (dialog && !update.isDiscussion) {
+        if (update.isOutbox) dialog.readOutboxMaxId = update.maxReadId;
+        else {
+          dialog.readInboxMaxId = update.maxReadId;
+          dialog.unread = update.unreadCount;
+        }
+      }
+      this.historyCache.clear();
+    });
     this.client.onUserTyping.add(async event => {
       const id = Number(event.chatId);
       if (!id) return;
@@ -178,6 +222,11 @@ export class TelegramService {
         until: Date.now() + 7_000,
       });
     });
+  }
+
+  invalidateMessageViews() {
+    this.dialogCache.at = 0;
+    this.historyCache.clear();
   }
 
   async refreshAuthorization() {
@@ -254,7 +303,7 @@ export class TelegramService {
       .then(user => {
         this.me = user;
         this.auth.stage = "authorized";
-        this.dialogCache.at = 0;
+        this.invalidateMessageViews();
       })
       .catch(error => {
         if (this.qrAbort?.signal.aborted) return;
@@ -364,8 +413,15 @@ export class TelegramService {
     this.me = null;
     this.auth = { stage: "phone", phone: "", phoneCodeHash: "", hint: "" };
     this.messageCache.clear();
-    this.dialogCache = { at: 0, values: [] };
+    this.dialogCache = { at: 0, values: [], loaded: false };
+    this.dialogRefresh = null;
+    this.historyCache.clear();
+    this.historyRefreshes.clear();
+    this.allowedReactionCache.clear();
+    this.floodUntil = 0;
     this.typing.clear();
+    this.avatarSources.clear();
+    this.avatarDownloads.clear();
     await rm(this.mediaDir, { recursive: true, force: true });
     await mkdir(this.mediaDir, { recursive: true });
   }
@@ -440,8 +496,48 @@ export class TelegramService {
     };
 
     Object.defineProperty(normalized, "_raw", { value: message, enumerable: false });
+    Object.defineProperty(normalized, "_rawAttachments", {
+      value: message.media ? [message] : [],
+      enumerable: false,
+      writable: true,
+    });
+    Object.defineProperty(normalized, "_groupedId", {
+      value: message.groupedIdUnique || null,
+      enumerable: false,
+    });
     this.messageCache.set(id, normalized);
     return normalized;
+  }
+
+  mergeGroupedMessages(messages) {
+    const merged = [];
+    const albums = new Map();
+    for (const message of messages) {
+      if (!message._groupedId) {
+        merged.push(message);
+        continue;
+      }
+
+      const existing = albums.get(message._groupedId);
+      if (!existing) {
+        albums.set(message._groupedId, message);
+        merged.push(message);
+        continue;
+      }
+
+      existing.attachments.push(...message.attachments);
+      existing._rawAttachments.push(...message._rawAttachments);
+      if (!existing.text && message.text) existing.text = message.text;
+      if (!existing.quote && message.quote) existing.quote = message.quote;
+      if (!existing.forwardedFrom && message.forwardedFrom) {
+        existing.forwardedFrom = message.forwardedFrom;
+      }
+      if (!existing.reactions.length && message.reactions.length) {
+        existing.reactions = message.reactions;
+      }
+      this.messageCache.set(message.id, existing);
+    }
+    return merged;
   }
 
   async enrichQuote(normalized, raw) {
@@ -470,45 +566,72 @@ export class TelegramService {
   }
 
   async dialogs() {
-    if (this.dialogCache.values.length && Date.now() - this.dialogCache.at < 2_000) {
+    const cacheAvailable = this.dialogCache.loaded;
+    if (cacheAvailable && Date.now() - this.dialogCache.at < DIALOG_CACHE_MS) {
       return this.dialogCache.values;
     }
+    if (this.dialogRefresh) return this.dialogRefresh;
+    if (cacheAvailable && Date.now() < this.floodUntil) return this.dialogCache.values;
 
-    const values = [];
-    for await (const dialog of this.client.iterDialogs({ limit: 300 })) {
-      const peer = dialog.peer;
-      const id = peerId(peer);
-      if (!Number.isSafeInteger(id)) continue;
-      const last = dialog.lastMessage ? this.normalizeMessage(dialog.lastMessage, dialog) : null;
-      values.push({
-        id: conversationId(peer),
-        kind: conversationKind(peer),
-        target: String(id),
-        name: id === peerId(this.me) ? "Saved Messages" : peerName(peer),
-        noteToSelf: id === peerId(this.me),
-        archived: Boolean(dialog.isArchived),
-        favorite: Boolean(dialog.isPinned),
-        muted: Boolean(dialog.isMuted),
-        unread: Number(dialog.unreadCount || 0),
-        last,
-        typing: this.activeTyping(id),
-        avatar: peer.photo ? `/api/services/telegram/avatar/${encodeURIComponent(id)}` : null,
-        blocked: false,
-        expiration: Number(dialog.ttlPeriod || 0),
-        description: undefined,
-        members: [],
-        admins: [],
-        permissions: {},
-        readInboxMaxId: Number(dialog.lastReadIngoing || 0),
-        readOutboxMaxId: Number(dialog.lastReadOutgoing || 0),
-      });
-    }
-    this.dialogCache = { at: Date.now(), values };
-    return values;
+    this.dialogRefresh = (async () => {
+      try {
+        const values = [];
+        for await (const dialog of this.client.iterDialogs({ limit: 300 })) {
+          const peer = dialog.peer;
+          const id = peerId(peer);
+          if (!Number.isSafeInteger(id)) continue;
+          const avatar = peer.photo?.big || peer.photo?.small || peer.photo;
+          const avatarVersion = avatar?.uniqueFileId || avatar?.fileId || "current";
+          if (avatar) this.avatarSources.set(String(id), avatar);
+          const last = dialog.lastMessage ? this.normalizeMessage(dialog.lastMessage, dialog) : null;
+          values.push({
+            id: conversationId(peer),
+            kind: conversationKind(peer),
+            target: String(id),
+            name: id === peerId(this.me) ? "Saved Messages" : peerName(peer),
+            noteToSelf: id === peerId(this.me),
+            archived: Boolean(dialog.isArchived),
+            favorite: Boolean(dialog.isPinned),
+            muted: Boolean(dialog.isMuted),
+            unread: Number(dialog.unreadCount || 0),
+            last,
+            typing: this.activeTyping(id),
+            avatar: avatar
+              ? `/api/services/telegram/avatar/${encodeURIComponent(id)}?v=${encodeURIComponent(avatarVersion)}`
+              : null,
+            blocked: false,
+            expiration: Number(dialog.ttlPeriod || 0),
+            description: undefined,
+            members: [],
+            admins: [],
+            permissions: {},
+            readInboxMaxId: Number(dialog.lastReadIngoing || 0),
+            readOutboxMaxId: Number(dialog.lastReadOutgoing || 0),
+          });
+        }
+        this.dialogCache = { at: Date.now(), values, loaded: true };
+        return values;
+      } catch (error) {
+        const wait = floodWaitSeconds(error);
+        if (!wait) throw error;
+        this.floodUntil = Math.max(this.floodUntil, Date.now() + wait * 1_000);
+        this.log(`Telegram flood wait: pausing refreshes for ${wait}s`);
+        if (cacheAvailable) return this.dialogCache.values;
+        throw new Error(`Telegram is rate-limiting refreshes. Try again in ${wait} seconds.`);
+      } finally {
+        this.dialogRefresh = null;
+      }
+    })();
+    return this.dialogRefresh;
   }
 
   async conversation(target) {
-    return (await this.dialogs()).find(item => item.target === String(target));
+    return this.cachedConversation(target) ||
+      (await this.dialogs()).find(item => item.target === String(target));
+  }
+
+  cachedConversation(target) {
+    return this.dialogCache.values.find(item => item.target === String(target));
   }
 
   async conversationDetails(target, kind) {
@@ -580,23 +703,90 @@ export class TelegramService {
   }
 
   async allowedReactions(target) {
+    const key = String(target);
+    const cached = this.allowedReactionCache.get(key);
+    if (cached && Date.now() - cached.at < ALLOWED_REACTIONS_CACHE_MS) return cached.values;
+
     const global = await this.globalReactions().catch(() => FALLBACK_REACTIONS);
+    let values = global;
     try {
       const full = await this.client.getFullChat(inputTarget(target));
       const available = full.availableReactions ?? full.full?.availableReactions;
-      if (available?._ === "chatReactionsNone") return [];
+      if (available?._ === "chatReactionsNone") values = [];
       if (available?._ === "chatReactionsSome") {
-        return available.reactions
+        values = available.reactions
           .filter(reaction => reaction._ === "reactionEmoji")
           .map(reaction => normalizeReaction(reaction.emoticon))
           .filter(reaction => global.includes(reaction));
       }
     } catch {}
-    return global;
+    this.allowedReactionCache.set(key, { at: Date.now(), values });
+    return values;
   }
 
-  async serveAttachment(req, res, normalized) {
-    const path = join(this.mediaDir, Buffer.from(normalized.id).toString("base64url"));
+  async messageHistory(target, kind, before) {
+    const key = `${target}:${before || "latest"}`;
+    const cached = this.historyCache.get(key);
+    const maxAge = before ? PAGED_HISTORY_CACHE_MS : HISTORY_CACHE_MS;
+    if (cached && Date.now() - cached.at < maxAge) {
+      return { ...cached.value, typing: this.activeTyping(target) };
+    }
+    if (this.historyRefreshes.has(key)) return this.historyRefreshes.get(key);
+
+    if (Date.now() < this.floodUntil) {
+      if (cached) return { ...cached.value, typing: this.activeTyping(target) };
+      const remaining = Math.max(1, Math.ceil((this.floodUntil - Date.now()) / 1_000));
+      throw new Error(`Telegram is rate-limiting refreshes. Try again in ${remaining} seconds.`);
+    }
+
+    const refresh = (async () => {
+      try {
+        const dialog = await this.conversation(target);
+        const normalized = [];
+        for await (const message of this.client.iterHistory(target, {
+          limit: 60,
+          ...(before ? { offset: { id: 0, date: Math.floor(before / 1_000) } } : {}),
+        })) {
+          normalized.push(this.normalizeMessage(message, dialog));
+        }
+        const rawCount = normalized.length;
+        const messages = this.mergeGroupedMessages(normalized.reverse());
+        for (const message of messages) await this.enrichQuote(message, message._raw);
+        if (!before && dialog && messages.length) dialog.last = messages.at(-1);
+        const readInboxMaxId = Number(dialog?.readInboxMaxId || 0);
+        const readThrough = messages
+          .filter(message => message.direction === "in" && message.telegramId <= readInboxMaxId)
+          .at(-1)?.timestamp || 0;
+        const value = {
+          messages,
+          hasMore: rawCount === 60,
+          readThrough,
+          allowedReactions: await this.allowedReactions(target),
+          conversation: await this.conversationDetails(target, kind),
+        };
+        this.historyCache.set(key, { at: Date.now(), value });
+        return { ...value, typing: this.activeTyping(target) };
+      } catch (error) {
+        const wait = floodWaitSeconds(error);
+        if (!wait) throw error;
+        this.floodUntil = Math.max(this.floodUntil, Date.now() + wait * 1_000);
+        this.log(`Telegram flood wait: pausing refreshes for ${wait}s`);
+        if (cached) return { ...cached.value, typing: this.activeTyping(target) };
+        throw new Error(`Telegram is rate-limiting refreshes. Try again in ${wait} seconds.`);
+      } finally {
+        this.historyRefreshes.delete(key);
+      }
+    })();
+    this.historyRefreshes.set(key, refresh);
+    return refresh;
+  }
+
+  async serveAttachment(req, res, normalized, index) {
+    const raw = normalized._rawAttachments[index];
+    const attachment = normalized.attachments[index];
+    if (!raw?.media || !attachment) throw new Error("Attachment unavailable");
+    const cacheId = `${normalized.id}:${index}`;
+    const path = join(this.mediaDir, Buffer.from(cacheId).toString("base64url"));
     let information = await stat(path).catch(() => null);
     if (information?.isFile() && information.size === 0) {
       await unlink(path).catch(() => {});
@@ -610,7 +800,7 @@ export class TelegramService {
           (async () => {
             const temporary = `${path}.${randomBytes(5).toString("hex")}.tmp`;
             try {
-              await this.client.downloadToFile(temporary, normalized._raw.media);
+              await this.client.downloadToFile(temporary, raw.media);
               const downloaded = await stat(temporary);
               if (!downloaded.size) throw new Error("Telegram returned an empty attachment");
               await rename(temporary, path);
@@ -625,7 +815,7 @@ export class TelegramService {
       information = await stat(path);
     }
 
-    const contentType = normalized.attachments[0]?.contentType || "application/octet-stream";
+    const contentType = attachment.contentType || "application/octet-stream";
     const range = req.headers.range?.match(/^bytes=(\d*)-(\d*)$/);
     if (range) {
       const start = range[1] ? Number(range[1]) : 0;
@@ -648,6 +838,47 @@ export class TelegramService {
       "content-type": contentType,
       "content-length": information.size,
       "accept-ranges": "bytes",
+      "cache-control": "private, max-age=86400",
+    });
+    return createReadStream(path).pipe(res);
+  }
+
+  async serveAvatar(res, target, version) {
+    const cacheId = `avatar:${target}:${version}`;
+    const path = join(this.mediaDir, Buffer.from(cacheId).toString("base64url"));
+    let information = await stat(path).catch(() => null);
+
+    if (!information?.isFile() || !information.size) {
+      if (!this.avatarDownloads.has(path)) {
+        this.avatarDownloads.set(
+          path,
+          (async () => {
+            const temporary = `${path}.${randomBytes(5).toString("hex")}.tmp`;
+            try {
+              let source = this.avatarSources.get(String(target));
+              if (!source) {
+                const peer = await this.client.getPeer(target);
+                source = peer.photo?.big || peer.photo?.small || peer.photo;
+              }
+              if (!source) throw new Error("Avatar unavailable");
+              await this.client.downloadToFile(temporary, source);
+              const downloaded = await stat(temporary);
+              if (!downloaded.size) throw new Error("Telegram returned an empty avatar");
+              await rename(temporary, path);
+            } finally {
+              await unlink(temporary).catch(() => {});
+              this.avatarDownloads.delete(path);
+            }
+          })(),
+        );
+      }
+      await this.avatarDownloads.get(path);
+      information = await stat(path);
+    }
+
+    res.writeHead(200, {
+      "content-type": "image/jpeg",
+      "content-length": information.size,
       "cache-control": "private, max-age=86400",
     });
     return createReadStream(path).pipe(res);
@@ -711,7 +942,9 @@ export class TelegramService {
       const archived = url.searchParams.get("archived") === "1";
       const dialogs = await this.dialogs();
       return json(res, 200, {
-        conversations: dialogs.filter(item => item.archived === archived),
+        conversations: dialogs
+          .filter(item => item.archived === archived)
+          .map(item => ({ ...item, typing: this.activeTyping(item.target) })),
         archivedCount: dialogs.filter(item => item.archived).length,
       });
     }
@@ -721,28 +954,7 @@ export class TelegramService {
       const target = inputTarget(conversation.split(":").at(-1));
       const kind = conversation.split(":")[0];
       const before = Number(url.searchParams.get("before") || 0);
-      const dialog = await this.conversation(target);
-      const history = [];
-      for await (const message of this.client.iterHistory(target, {
-        limit: 60,
-        ...(before ? { offsetDate: new Date(before) } : {}),
-      })) {
-        const normalized = this.normalizeMessage(message, dialog);
-        history.push(await this.enrichQuote(normalized, message));
-      }
-      history.reverse();
-      const readInboxMaxId = Number(dialog?.readInboxMaxId || 0);
-      const readThrough = history
-        .filter(message => message.direction === "in" && message.telegramId <= readInboxMaxId)
-        .at(-1)?.timestamp || 0;
-      return json(res, 200, {
-        messages: history,
-        hasMore: history.length === 60,
-        readThrough,
-        typing: this.activeTyping(target),
-        allowedReactions: await this.allowedReactions(target),
-        conversation: await this.conversationDetails(target, kind),
-      });
+      return json(res, 200, await this.messageHistory(target, kind, before));
     }
 
     if (path === "/read" && req.method === "POST") {
@@ -751,7 +963,11 @@ export class TelegramService {
       const dialog = await this.conversation(target);
       const maxId = Number(input.maxMessageId || dialog?.last?.telegramId || 0);
       await this.client.readHistory(target, { maxId, clearMentions: true });
-      this.dialogCache.at = 0;
+      if (dialog) {
+        dialog.readInboxMaxId = Math.max(dialog.readInboxMaxId, maxId);
+        dialog.unread = 0;
+      }
+      this.historyCache.clear();
       return json(res, 200, { ok: true });
     }
 
@@ -773,7 +989,7 @@ export class TelegramService {
         ...(reply ? { replyTo: reply.telegramId } : {}),
         disableWebPreview: !this.state.settings.linkPreviews,
       });
-      this.dialogCache.at = 0;
+      this.invalidateMessageViews();
       return json(res, 200, { message: this.normalizeMessage(sent) });
     }
 
@@ -847,7 +1063,7 @@ export class TelegramService {
         revoke: true,
         shouldDispatch: true,
       });
-      this.dialogCache.at = 0;
+      this.invalidateMessageViews();
       return json(res, 200, { ok: true });
     }
 
@@ -901,7 +1117,7 @@ export class TelegramService {
       if (typeof input.expiration === "number") {
         await this.client.setChatTtl(target, input.expiration);
       }
-      this.dialogCache.at = 0;
+      this.invalidateMessageViews();
       return json(res, 200, { ok: true });
     }
 
@@ -961,7 +1177,7 @@ export class TelegramService {
         title: String(input.name || "").trim(),
         users: (input.members || []).map(value => Number(value)),
       });
-      this.dialogCache.at = 0;
+      this.invalidateMessageViews();
       return json(res, 200, { ok: true });
     }
 
@@ -975,14 +1191,14 @@ export class TelegramService {
       if (Array.isArray(input.addMembers) && input.addMembers.length) {
         await this.client.addChatMembers(target, input.addMembers.map(Number), { forwardCount: 0 });
       }
-      this.dialogCache.at = 0;
+      this.invalidateMessageViews();
       return json(res, 200, { ok: true });
     }
 
     if (path === "/group/leave" && req.method === "POST") {
       const input = await body(req);
       await this.client.leaveChat(inputTarget(input.target));
-      this.dialogCache.at = 0;
+      this.invalidateMessageViews();
       return json(res, 200, { ok: true });
     }
 
@@ -1066,23 +1282,20 @@ export class TelegramService {
     }
 
     if (path.startsWith("/attachment/") && req.method === "GET") {
-      const id = decodeURIComponent(path.slice("/attachment/".length).split("/")[0]);
+      const [encodedId, rawIndex] = path.slice("/attachment/".length).split("/");
+      const id = decodeURIComponent(encodedId);
+      const index = Number(rawIndex || 0);
       const message = this.messageCache.get(id);
-      if (!message?._raw?.media) return json(res, 404, { error: "Attachment unavailable" });
-      return this.serveAttachment(req, res, message);
+      if (!message?._rawAttachments?.[index]?.media) {
+        return json(res, 404, { error: "Attachment unavailable" });
+      }
+      return this.serveAttachment(req, res, message, index);
     }
 
     if (path.startsWith("/avatar/") && req.method === "GET") {
       const target = Number(decodeURIComponent(path.slice("/avatar/".length)));
       try {
-        const peer = await this.client.getPeer(target);
-        const photo = peer.photo?.big || peer.photo?.small || peer.photo;
-        if (!photo) throw new Error("Avatar unavailable");
-        res.writeHead(200, {
-          "content-type": "image/jpeg",
-          "cache-control": "private, max-age=3600",
-        });
-        return this.client.downloadAsNodeStream(photo).pipe(res);
+        return await this.serveAvatar(res, target, url.searchParams.get("v") || "current");
       } catch {
         return json(res, 404, { error: "Avatar unavailable" });
       }

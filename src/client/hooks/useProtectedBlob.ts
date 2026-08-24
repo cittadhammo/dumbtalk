@@ -19,25 +19,24 @@ export function useProtectedBlob(path?: string, cacheKey?: string) {
 			if (!cancelled) setUrl(next);
 		};
 
-		if (cacheKey) {
-			void readCachedBlob(cacheKey).then((blob) => {
-				if (blob && !cancelled) show(blob);
-			});
-		}
+		void (async () => {
+			const cached = cacheKey
+				? await readCachedBlob(cacheKey).catch(() => undefined)
+				: undefined;
+			if (cached) {
+				if (!cancelled) show(cached);
+				return;
+			}
 
-		void fetch(path, {
-			cache: 'no-store',
-			headers: { authorization: `Bearer ${widgetToken()}` },
-		})
-			.then(async (response) => {
-				if (!response.ok) throw new Error('Media unavailable');
-				return response.blob();
-			})
-			.then(async (blob) => {
-				if (cacheKey) await writeCachedBlob(cacheKey, blob);
-				if (!cancelled) show(blob);
-			})
-			.catch(() => undefined);
+			const response = await fetch(path, {
+				cache: 'no-store',
+				headers: { authorization: `Bearer ${widgetToken()}` },
+			});
+			if (!response.ok) throw new Error('Media unavailable');
+			const blob = await response.blob();
+			if (cacheKey) await writeCachedBlob(cacheKey, blob);
+			if (!cancelled) show(blob);
+		})().catch(() => undefined);
 
 		return () => {
 			cancelled = true;
