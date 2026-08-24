@@ -92,7 +92,12 @@ function pollFromMessage(message) {
 }
 
 function errorCode(error) {
-  return error?.errorMessage || error?.code || error?.message || "Telegram request failed";
+  return String(
+    error?.errorMessage ||
+      error?.message ||
+      error?.code ||
+      "Telegram request failed",
+  );
 }
 
 function inputTarget(value) {

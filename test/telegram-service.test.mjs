@@ -46,4 +46,5 @@ test("Telegram integration contains native auth, read, reaction, and media paths
   ]) {
     assert.match(source, new RegExp(feature));
   }
+  assert.match(source, /return String\(/);
 });
