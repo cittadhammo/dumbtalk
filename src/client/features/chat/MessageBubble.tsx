@@ -123,6 +123,9 @@ export function MessageBubble({
 			onArrow={onArrow}
 			onClick={onActivate}
 		>
+			{message.forwardedFrom && (
+				<span class={styles.forwarded}>Forwarded from {message.forwardedFrom}</span>
+			)}
 			{message.quote && (
 				<span class={styles.quote}>
 					<strong>{message.quote.author}</strong>

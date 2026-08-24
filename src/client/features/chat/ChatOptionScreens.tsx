@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { FocusButton } from '../../components/FocusButton';
 import { FocusInput } from '../../components/FocusInput';
+import { AppIcon } from '../../components/AppIcon';
 import { useSoftkeys } from '../../platform/Softkeys';
 import type { UniversalConversation, UniversalMessage } from '../../services/contracts';
 import styles from './ChatOptions.module.scss';
@@ -70,6 +71,11 @@ export function PollComposer({
 					);
 				}}
 			>
+				<div class={styles.formIntro}>
+					<span class={styles.formIcon}><AppIcon name="poll" /></span>
+					<span><strong>Ask the group</strong><small>Add a question and at least two choices.</small></span>
+				</div>
+				<label class={styles.fieldLabel}>Question</label>
 				<FocusInput
 					id="poll-question"
 					autoFocus
@@ -78,6 +84,7 @@ export function PollComposer({
 					maxlength={200}
 					onInput={(event) => setQuestion(event.currentTarget.value)}
 				/>
+				<label class={styles.fieldLabel}>Choices</label>
 				{options.map((value, index) => (
 					<FocusInput
 						id={`poll-option-${index}`}
@@ -97,7 +104,9 @@ export function PollComposer({
 					class={styles.action}
 					onClick={() => setMultiple((value) => !value)}
 				>
-					Multiple choices: {multiple ? 'On' : 'Off'}
+					<span class={styles.toggleMark}>{multiple ? '●' : '○'}</span>
+					<span>Allow multiple choices</span>
+					<strong class={styles.actionValue}>{multiple ? 'On' : 'Off'}</strong>
 				</FocusButton>
 				<FocusButton id="poll-create" type="submit" class={styles.primary}>
 					Create poll
@@ -221,7 +230,14 @@ export function VoiceComposer({
 					recording ? send() : cloudPhone ? fileInput.current?.click() : void toggleRecording()
 				}
 			>
-				{recording ? '● Ready' : active ? `■ Stop · ${elapsed}s` : '● Record voice note'}
+				<span class={`${styles.voiceGlyph} ${active ? styles.recording : ''}`}>
+					<AppIcon name="mic" />
+					<span class={styles.waveform} aria-hidden="true"><i /><i /><i /><i /></span>
+				</span>
+				<span class={styles.voiceLabel}>
+					<strong>{recording ? 'Voice note ready' : active ? `Recording · ${elapsed}s` : 'Record voice note'}</strong>
+					<small>{recording ? 'Centre sends' : active ? 'Press to stop' : 'Use the phone microphone'}</small>
+				</span>
 			</FocusButton>
 			{preview.current && <audio ref={previewAudio} src={preview.current} />}
 			{recording && (

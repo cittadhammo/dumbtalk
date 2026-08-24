@@ -129,6 +129,15 @@
 	margin-left: auto;
 }
 
+.mutedIcon {
+	display: grid;
+	width: 13px;
+	height: 13px;
+	place-items: center;
+	color: #9bb0a7;
+	font-size: 12px;
+}
+
 .titleText {
 	overflow: hidden;
 	text-overflow: ellipsis;

@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { FocusButton } from '../../components/FocusButton';
 import { FocusInput } from '../../components/FocusInput';
+import { AppIcon } from '../../components/AppIcon';
 import { useProtectedImage } from '../../hooks/useProtectedImage';
+import { useFocusManager } from '../../platform/Focus';
 import type {
 	MessagingService,
 	UniversalConversation,
@@ -21,40 +23,88 @@ export function AttachmentComposer({
 }) {
 	const input = useRef<HTMLInputElement>(null);
 	const [file, setFile] = useState<File>();
+	const { focus } = useFocusManager();
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState<string>();
+	const cloudPhone = typeof navigator.hasFeature === 'function';
+	const [support, setSupport] = useState({ checking: true, images: false, videos: false, files: false });
+
+	useEffect(() => {
+		if (typeof navigator.hasFeature !== 'function') {
+			setSupport({ checking: false, images: true, videos: true, files: true });
+			return;
+		}
+		void Promise.all([
+			navigator.hasFeature('ImageUpload').catch(() => false),
+			navigator.hasFeature('VideoUpload').catch(() => false),
+			navigator.hasFeature('FileUpload').catch(() => false),
+		]).then(([images, videos, files]) => setSupport({ checking: false, images, videos, files }));
+	}, []);
+
+	useEffect(() => {
+		if (support.checking) return;
+		const target = support.images || support.videos || support.files
+			? 'attachment-choose'
+			: 'attachment-cancel';
+		window.requestAnimationFrame(() => focus(target));
+	}, [focus, support]);
 
 	return (
-		<aside class={styles.composer}>
+		<aside class={styles.composer} aria-label="Send attachment">
 			<input
 				ref={input}
 				class={styles.hiddenInput}
 				type="file"
-				accept="image/*,video/*,audio/*,.pdf,.txt,.zip"
+				accept={
+					!support.files
+						? [support.images && 'image/*', support.videos && 'video/*'].filter(Boolean).join(',')
+						: undefined
+				}
 				onChange={(event) => setFile(event.currentTarget.files?.[0])}
 			/>
-			<FocusButton id="attachment-choose" autoFocus onClick={() => input.current?.click()}>
-				{file ? file.name : 'Choose attachment'}
-			</FocusButton>
-			{file && <span class={styles.fileInfo}>{Math.ceil(file.size / 1024)} KB{caption ? ' · with caption' : ''}</span>}
+			<div class={styles.composerTitle}>
+				<span class={styles.composerIcon}><AppIcon name="attach" /></span>
+				<span><strong>Send attachment</strong><small>{file ? file.name : 'Choose a saved item'}</small></span>
+			</div>
+			{support.checking && <span class={styles.fileInfo}>Checking phone support…</span>}
+			{!support.checking && !support.images && !support.videos && !support.files && (
+				<span class={styles.error}>Uploads are not supported by this CloudPhone build.</span>
+			)}
+			{(support.images || support.videos || support.files) && (
+				<FocusButton id="attachment-choose" autoFocus onClick={() => input.current?.click()}>
+					<AppIcon name="attach" />
+					{file ? 'Choose another' : support.files ? 'Choose saved file' : 'Choose saved media'}
+				</FocusButton>
+			)}
+			{file && (
+				<span class={styles.fileInfo}>
+					{Math.ceil(file.size / 1024)} KB
+					{caption ? ' · message used as caption' : ''}
+				</span>
+			)}
+			{cloudPhone && (support.images || support.videos || support.files) && !file && (
+				<span class={styles.fileInfo}>Saved items only; live camera capture is unavailable here.</span>
+			)}
 			{error && <span class={styles.error}>{error}</span>}
-			<FocusButton
-				id="attachment-send"
-				disabled={!file || busy}
-				onClick={() => {
-					if (!file) return;
-					setBusy(true);
-					void onSend(file, caption)
-						.then(onClose)
-						.catch((reason) => {
-							setBusy(false);
-							setError(reason instanceof Error ? reason.message : 'Send failed');
-						});
-				}}
-			>
-				{busy ? 'Sending…' : 'Send'}
-			</FocusButton>
-			<FocusButton id="attachment-cancel" onClick={onClose}>Cancel</FocusButton>
+			<div class={styles.composerActions}>
+				<FocusButton id="attachment-cancel" onClick={onClose}>Cancel</FocusButton>
+				<FocusButton
+					id="attachment-send"
+					disabled={!file || busy}
+					onClick={() => {
+						if (!file) return;
+						setBusy(true);
+						void onSend(file, caption)
+							.then(onClose)
+							.catch((reason) => {
+								setBusy(false);
+								setError(reason instanceof Error ? reason.message : 'Send failed');
+							});
+					}}
+				>
+					{busy ? 'Sending…' : 'Send'}
+				</FocusButton>
+			</div>
 		</aside>
 	);
 }
@@ -72,29 +122,45 @@ export function StickerPicker({
 	onChoose: (sticker: UniversalSticker) => void;
 }) {
 	const [stickers, setStickers] = useState<UniversalSticker[]>([]);
+	const [visible, setVisible] = useState(24);
 	const [error, setError] = useState<string>();
 
 	useEffect(() => {
-		void service.listStickers().then(setStickers).catch((reason) => setError(reason instanceof Error ? reason.message : 'Unable to load stickers'));
+		void service
+			.listStickers()
+			.then(setStickers)
+			.catch((reason) =>
+				setError(reason instanceof Error ? reason.message : 'Unable to load stickers'),
+			);
 	}, [service]);
 
 	return (
 		<main class={styles.overlayScreen}>
-			<header>Stickers</header>
+			<header><AppIcon name="sticker" /> Stickers</header>
 			<section class={styles.stickerGrid}>
 				{error && <p class={styles.error}>{error}</p>}
-				{!error && !stickers.length && <p>No received stickers are cached yet.</p>}
-				{stickers.map((sticker, index) => (
+				{!error && !stickers.length && <p>No known Signal sticker packs are installed.</p>}
+				{stickers.slice(0, visible).map((sticker, index) => (
 					<FocusButton
 						id={`sticker-${sticker.id}`}
 						grid="stickers"
 						columns={4}
 						autoFocus={index === 0}
+						title={sticker.packTitle}
 						onClick={() => onChoose(sticker)}
 					>
 						<StickerImage sticker={sticker} />
 					</FocusButton>
 				))}
+				{visible < stickers.length && (
+					<FocusButton
+						id="stickers-more"
+						class={styles.moreStickers}
+						onClick={() => setVisible((current) => current + 24)}
+					>
+						More
+					</FocusButton>
+				)}
 			</section>
 		</main>
 	);
@@ -111,16 +177,19 @@ export function ConversationPicker({
 }) {
 	return (
 		<main class={styles.overlayScreen}>
-			<header>{title}</header>
-			<section class={styles.conversationList}>
+			<header><AppIcon name="forward" /> {title}</header>
+			<section class={`${styles.conversationList} ${styles.destinationList}`}>
 				{conversations.map((conversation, index) => (
 					<FocusButton
 						id={`destination-${conversation.id}`}
 						autoFocus={index === 0}
 						onClick={() => onChoose(conversation)}
 					>
-						<strong>{conversation.title}</strong>
-						<span>{conversation.serviceId}</span>
+						<span class={styles.destinationAvatar}>{conversation.title.slice(0, 2).toUpperCase()}</span>
+						<span class={styles.destinationText}>
+							<strong>{conversation.title}</strong>
+							<small>{conversation.kind === 'group' ? 'Group' : 'Direct message'} · {conversation.serviceId}</small>
+						</span>
 					</FocusButton>
 				))}
 			</section>
@@ -143,7 +212,10 @@ export function ChatSearch({
 
 	const search = () => {
 		if (query.trim().length < 2) return;
-		void service.searchMessages(query.trim(), conversation).then(setResults).catch((reason) => setError(reason instanceof Error ? reason.message : 'Search failed'));
+		void service
+			.searchMessages(query.trim(), conversation)
+			.then(setResults)
+			.catch((reason) => setError(reason instanceof Error ? reason.message : 'Search failed'));
 	};
 
 	return (
@@ -161,7 +233,7 @@ export function ChatSearch({
 							if (event.key === 'Enter') search();
 						}}
 					/>
-					<FocusButton id="chat-search-submit" onClick={search}>⌕</FocusButton>
+					<FocusButton id="chat-search-submit" aria-label="Search" onClick={search}><AppIcon name="search" /></FocusButton>
 				</div>
 				{error && <p class={styles.error}>{error}</p>}
 				<div class={styles.conversationList}>

@@ -18,8 +18,8 @@
 .panel,
 .form {
 	display: grid;
-	gap: 5px;
-	padding: 5px 7px 10px;
+	gap: 6px;
+	padding: 6px 8px 10px;
 }
 
 .heading {
@@ -44,21 +44,23 @@
 .timerGrid {
 	display: grid;
 	grid-template-columns: repeat(2, minmax(0, 1fr));
-	gap: 4px;
+	gap: 6px;
 }
 
 .option {
 	display: flex;
 	min-width: 0;
-	min-height: 39px;
+	min-height: 47px;
 	align-items: center;
-	gap: 5px;
-	padding: 5px 6px;
-	background: linear-gradient(145deg, #1a3029, #13251f);
-	border: 1px solid #2d4c41;
-	border-radius: 7px;
+	gap: 7px;
+	padding: 6px 7px;
+	background: linear-gradient(145deg, #1b352c, #12251f);
+	border: 1px solid #35564a;
+	border-radius: 9px;
+	box-shadow: 0 2px 6px #0004;
 	color: tokens.$text;
-	font-size: 10px;
+	font-size: 11px;
+	font-weight: 650;
 	line-height: 1.1;
 	text-align: left;
 }
@@ -70,14 +72,15 @@
 
 .optionIcon {
 	display: inline-grid;
-	width: 19px;
-	height: 19px;
-	flex: 0 0 19px;
+	width: 29px;
+	height: 29px;
+	flex: 0 0 29px;
 	place-items: center;
-	background: #28473c;
-	border-radius: 5px;
+	background: linear-gradient(145deg, #315b4d, #244239);
+	border: 1px solid #ffffff18;
+	border-radius: 8px;
 	font-family: system-ui, sans-serif;
-	font-size: 12px;
+	font-size: 18px;
 	font-weight: 700;
 	line-height: 1;
 }
@@ -99,10 +102,17 @@
 	text-align: left;
 }
 
+.value {
+	margin-left: auto;
+	color: #9fb7ad;
+	font-size: 10px;
+	font-weight: 600;
+}
+
 .timerGrid .action {
-	min-height: 31px;
+	min-height: 34px;
 	padding: 5px 6px;
-	font-size: 9px;
+	font-size: 10px;
 }
 
 .primary {
@@ -125,6 +135,55 @@
 	border: 1px solid #365a4e;
 	border-radius: 5px;
 	color: tokens.$text;
+}
+
+.formIntro {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin-bottom: 2px;
+	padding: 7px;
+	background: linear-gradient(145deg, #1b342b, #12251f);
+	border: 1px solid #345449;
+	border-radius: 9px;
+}
+
+.formIntro > span:last-child {
+	display: grid;
+	gap: 1px;
+}
+
+.formIntro strong { font-size: 12px; }
+.formIntro small { color: tokens.$muted; font-size: 9px; }
+
+.formIcon {
+	display: grid;
+	width: 31px;
+	height: 31px;
+	flex: 0 0 31px;
+	place-items: center;
+	background: #315b4d;
+	border-radius: 8px;
+	font-size: 18px;
+}
+
+.fieldLabel {
+	margin: 3px 2px -3px;
+	color: tokens.$muted;
+	font-size: 9px;
+	font-weight: 700;
+	text-transform: uppercase;
+}
+
+.toggleMark {
+	color: #85b7ff;
+	font-size: 14px;
+}
+
+.actionValue {
+	margin-left: auto;
+	color: tokens.$muted;
+	font-size: 10px;
 }
 
 .navigation {
@@ -172,27 +231,76 @@
 
 .voiceComposer {
 	position: absolute;
-	right: 43px;
+	right: 4px;
 	bottom: 35px;
 	left: 4px;
 	z-index: 8;
 	display: grid;
-	gap: 3px;
-	padding: 5px;
-	background: #10201bf2;
-	border: 1px solid #456357;
-	border-radius: 8px;
-	box-shadow: 0 4px 14px #000b;
+	gap: 5px;
+	padding: 7px;
+	background: linear-gradient(145deg, #173129f7, #0d1e19f7);
+	border: 1px solid #527b6c;
+	border-radius: 10px;
+	box-shadow: 0 6px 18px #000d;
 }
 
 .voiceControl {
-	min-height: 28px;
-	padding: 4px 7px;
-	background: #214b3b;
+	display: flex;
+	min-height: 43px;
+	align-items: center;
+	gap: 8px;
+	padding: 5px 7px;
+	background: linear-gradient(145deg, #285444, #1e3f34);
 	border: 1px solid #5a8b78;
 	border-radius: 6px;
 	color: white;
 	text-align: left;
+}
+
+.voiceGlyph {
+	position: relative;
+	display: grid;
+	width: 31px;
+	height: 31px;
+	flex: 0 0 31px;
+	place-items: center;
+	background: #173128;
+	border-radius: 50%;
+	font-size: 17px;
+}
+
+.voiceGlyph.recording {
+	background: #74323a;
+	animation: recordPulse 1s infinite alternate;
+}
+
+.voiceLabel { display: grid; gap: 1px; }
+.voiceLabel strong { font-size: 11px; }
+.voiceLabel small { font-size: 8px; }
+
+.waveform {
+	position: absolute;
+	right: -5px;
+	bottom: 2px;
+	display: flex;
+	height: 10px;
+	align-items: center;
+	gap: 1px;
+}
+
+.waveform i {
+	display: block;
+	width: 2px;
+	height: 4px;
+	background: #9bd5be;
+	border-radius: 2px;
+}
+
+.waveform i:nth-child(2) { height: 8px; }
+.waveform i:nth-child(3) { height: 6px; }
+
+@keyframes recordPulse {
+	to { box-shadow: 0 0 0 3px #d7657044; }
 }
 
 .voiceComposer small {
@@ -222,16 +330,16 @@
 	display: grid;
 	min-height: 0;
 	grid-template-rows: auto minmax(0, 1fr) auto;
-	background: #0b1713ee;
-	border: 1px solid #456357;
-	border-radius: 9px;
+	background: linear-gradient(145deg, #10231ef2, #091511f2);
+	border: 1px solid #527b6c;
+	border-radius: 11px;
 	box-shadow: 0 5px 18px #000d;
 	backdrop-filter: blur(5px);
 }
 
 .pinnedOverlay header,
 .pinnedOverlay footer {
-	padding: 6px 8px;
+	padding: 7px 9px;
 	color: tokens.$muted;
 	font-size: 10px;
 }
@@ -249,10 +357,11 @@
 	display: grid;
 	width: 88%;
 	gap: 2px;
-	padding: 5px 7px;
-	background: #233a32;
-	border: 1px solid transparent;
-	border-radius: 8px;
+	padding: 7px 8px;
+	background: linear-gradient(145deg, #29443a, #20372f);
+	border: 1px solid #ffffff12;
+	border-radius: 9px;
+	box-shadow: 0 2px 6px #0005;
 	color: tokens.$text;
 	font-size: 11px;
 	text-align: left;

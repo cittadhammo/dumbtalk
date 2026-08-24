@@ -1,4 +1,5 @@
 import { FocusButton } from '../../components/FocusButton';
+import { AppIcon, type AppIconName } from '../../components/AppIcon';
 import type { ComponentChildren } from 'preact';
 import { useState } from 'preact/hooks';
 import type { ServiceCapabilities, UniversalConversation } from '../../services/contracts';
@@ -19,11 +20,11 @@ type Props = {
 };
 
 const timers = [
-	{ label: 'Turn off disappearing messages', seconds: 0 },
-	{ label: 'Disappear after 5 minutes', seconds: 300 },
-	{ label: 'Disappear after 1 hour', seconds: 3_600 },
-	{ label: 'Disappear after 1 day', seconds: 86_400 },
-	{ label: 'Disappear after 1 week', seconds: 604_800 },
+	{ label: 'Off', seconds: 0 },
+	{ label: '5 minutes', seconds: 300 },
+	{ label: '1 hour', seconds: 3_600 },
+	{ label: '1 day', seconds: 86_400 },
+	{ label: '1 week', seconds: 604_800 },
 ];
 
 function OptionButton({
@@ -33,7 +34,7 @@ function OptionButton({
 	onClick,
 }: {
 	id: string;
-	icon: string;
+	icon: AppIconName;
 	children: ComponentChildren;
 	onClick: () => void;
 }) {
@@ -47,7 +48,7 @@ function OptionButton({
 			onClick={onClick}
 		>
 			<span class={styles.optionIcon} aria-hidden="true">
-				{icon}
+				<AppIcon name={icon} />
 			</span>
 			<span>{children}</span>
 		</FocusButton>
@@ -68,7 +69,7 @@ export function ChatOptions({
 	capabilities,
 }: Props) {
 	const [showExpiration, setShowExpiration] = useState(false);
-	const currentTimer = timers.find((timer) => timer.seconds === conversation.expiration)?.label ?? 'Custom';
+	const currentTimer = timers.find((timer) => timer.seconds === conversation.expiration)?.label ?? 'On';
 
 	return (
 		<main class={styles.screen}>
@@ -77,17 +78,17 @@ export function ChatOptions({
 				<p class={styles.heading}>Message</p>
 				<div class={styles.optionGrid}>
 					{capabilities?.search && (
-						<OptionButton id="chat-option-search" icon="⌕" onClick={onSearch}>
+						<OptionButton id="chat-option-search" icon="search" onClick={onSearch}>
 							Search chat
 						</OptionButton>
 					)}
 					{capabilities?.polls && (
-						<OptionButton id="chat-option-poll" icon="▥" onClick={onPoll}>
+						<OptionButton id="chat-option-poll" icon="poll" onClick={onPoll}>
 							Create poll
 						</OptionButton>
 					)}
 					{capabilities?.pins && (
-						<OptionButton id="chat-option-pins" icon="⌖" onClick={onPins}>
+						<OptionButton id="chat-option-pins" icon="pin" onClick={onPins}>
 							Pinned messages
 						</OptionButton>
 					)}
@@ -95,37 +96,37 @@ export function ChatOptions({
 				<p class={styles.heading}>Conversation</p>
 				<div class={styles.optionGrid}>
 					{conversation.isInvited && (
-						<OptionButton id="chat-option-accept-invite" icon="✓" onClick={() => onGroupInvite(true)}>
+						<OptionButton id="chat-option-accept-invite" icon="group" onClick={() => onGroupInvite(true)}>
 							Accept invitation
 						</OptionButton>
 					)}
 					{conversation.isInvited && (
-						<OptionButton id="chat-option-decline-invite" icon="×" onClick={() => onGroupInvite(false)}>
+						<OptionButton id="chat-option-decline-invite" icon="delete" onClick={() => onGroupInvite(false)}>
 							Decline invitation
 						</OptionButton>
 					)}
 					{conversation.kind === 'group' && (
-						<OptionButton id="chat-option-group" icon="♟" onClick={onGroup}>
+						<OptionButton id="chat-option-group" icon="group" onClick={onGroup}>
 							Group settings
 						</OptionButton>
 					)}
 					{capabilities?.identities && conversation.kind === 'direct' && !conversation.isNoteToSelf && (
-						<OptionButton id="chat-option-safety" icon="◇" onClick={onSafety}>
+						<OptionButton id="chat-option-safety" icon="safety" onClick={onSafety}>
 							Safety number
 						</OptionButton>
 					)}
 					{capabilities?.messageRequests && conversation.isMessageRequest && (
-						<OptionButton id="chat-option-accept-request" icon="✓" onClick={() => onMessageRequest('accept')}>
+						<OptionButton id="chat-option-accept-request" icon="reply" onClick={() => onMessageRequest('accept')}>
 							Accept request
 						</OptionButton>
 					)}
 					{capabilities?.messageRequests && conversation.isMessageRequest && (
-						<OptionButton id="chat-option-delete-request" icon="×" onClick={() => onMessageRequest('delete')}>
+						<OptionButton id="chat-option-delete-request" icon="delete" onClick={() => onMessageRequest('delete')}>
 							Delete request
 						</OptionButton>
 					)}
 					{capabilities?.blocking && !conversation.isNoteToSelf && (
-						<OptionButton id="chat-option-block" icon="⊘" onClick={onBlock}>
+						<OptionButton id="chat-option-block" icon="block" onClick={onBlock}>
 							{conversation.isBlocked ? 'Unblock' : 'Block'}{' '}
 							{conversation.kind === 'group' ? 'group' : 'contact'}
 						</OptionButton>
@@ -139,11 +140,10 @@ export function ChatOptions({
 						onClick={() => setShowExpiration((value) => !value)}
 					>
 						<span class={styles.optionIcon} aria-hidden="true">
-							◷
+							<AppIcon name="timer" />
 						</span>
-						<span>
-							Disappearing · {currentTimer.replace('Disappear after ', '').replace('Turn off ', 'Off')}
-						</span>
+						<span>Disappearing messages</span>
+						<strong class={styles.value}>{currentTimer}</strong>
 					</FocusButton>
 				)}
 				{capabilities?.disappearingMessages && showExpiration && (

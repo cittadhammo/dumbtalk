@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'preact/hooks';
 import { readConversationPage, writeConversationPage } from '../../cache/snapshots';
 import { FocusButton } from '../../components/FocusButton';
+import { AppIcon } from '../../components/AppIcon';
 import { useProtectedImage } from '../../hooks/useProtectedImage';
 import { useFocusManager } from '../../platform/Focus';
 import { useSoftkeys } from '../../platform/Softkeys';
@@ -116,7 +117,7 @@ function ConversationRow({
 						{conversation.title}
 					</span>
 					<span class={styles.indicators}>
-						{conversation.isMuted && <span aria-label="Muted">♪</span>}
+						{conversation.isMuted && <span class={styles.mutedIcon} aria-label="Muted"><AppIcon name="mute" /></span>}
 						<span class={styles.serviceIcon} aria-label={`${conversation.serviceId} conversation`}>
 							{conversation.serviceId === 'signal' ? 'S' : 'T'}
 						</span>
@@ -215,7 +216,7 @@ export function ConversationList({ onOpen, onMenu, onArchived, archived = false 
 				))}
 				{!archived && archivedCount > 0 && (
 					<FocusButton id="archived-conversations" type="button" class={styles.row} onClick={onArchived}>
-						<span class={styles.avatar}>▣</span>
+						<span class={styles.avatar}><AppIcon name="archive" /></span>
 						<span class={styles.body}>
 							<span class={styles.title}>Archived chats</span>
 							<span class={styles.preview}>

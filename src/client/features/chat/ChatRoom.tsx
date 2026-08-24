@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { FocusButton } from '../../components/FocusButton';
 import { FocusInput } from '../../components/FocusInput';
+import { AppIcon } from '../../components/AppIcon';
 import { ChatOptions } from './ChatOptions';
 import {
 	GroupSettings,
@@ -291,7 +292,7 @@ function MessageActions({
 						class={styles.action}
 						onClick={onReply}
 					>
-						↩ Reply
+						<AppIcon name="reply" /> Reply
 					</FocusButton>
 					{capabilities?.forwarding !== false && (
 						<FocusButton
@@ -302,7 +303,7 @@ function MessageActions({
 							class={styles.action}
 							onClick={onForward}
 						>
-							➤ Forward
+							<AppIcon name="forward" /> Forward
 						</FocusButton>
 					)}
 					{capabilities?.pins !== false && (
@@ -314,7 +315,7 @@ function MessageActions({
 							class={styles.action}
 							onClick={onPin}
 						>
-							⌖ {message.pinned ? 'Unpin' : 'Pin'}
+							<AppIcon name="pin" /> {message.pinned ? 'Unpin' : 'Pin'}
 						</FocusButton>
 					)}
 					{capabilities?.edits !== false && message.direction === 'outgoing' && (
@@ -326,7 +327,7 @@ function MessageActions({
 							class={styles.action}
 							onClick={onEdit}
 						>
-							✎ Edit
+							<AppIcon name="edit" /> Edit
 						</FocusButton>
 					)}
 					{capabilities?.deletes !== false && message.direction === 'outgoing' && (
@@ -338,7 +339,7 @@ function MessageActions({
 							class={styles.action}
 							onClick={onDelete}
 						>
-							⌫ Delete
+							<AppIcon name="delete" /> Delete
 						</FocusButton>
 					)}
 				</div>
@@ -445,7 +446,9 @@ export function ChatRoom({ conversation, initialMessage, onBack }: Props) {
 	const [atBottom, setAtBottom] = useState(true);
 	const [selectedMessageId, setSelectedMessageId] = useState<string>();
 	const [composerFocused, setComposerFocused] = useState(false);
-	const [composeControl, setComposeControl] = useState<'voice' | 'clear' | 'latest' | 'send'>();
+	const [composeControl, setComposeControl] = useState<
+		'voice' | 'attachment' | 'sticker' | 'clear' | 'latest' | 'send'
+	>();
 	const [actionMessage, setActionMessage] = useState<UniversalMessage>();
 	const [showOptions, setShowOptions] = useState(false);
 	const [optionPanel, setOptionPanel] = useState<'pins' | 'poll' | 'group' | 'safety' | 'search'>();
@@ -540,10 +543,29 @@ export function ChatRoom({ conversation, initialMessage, onBack }: Props) {
 	}, [conversation.id, initialMessage?.id]);
 
 	useEffect(() => {
-		if (actionMessage || showOptions || optionPanel || viewer || voiceOpen || attachmentOpen || stickerOpen || forwarding) return;
+		if (
+			actionMessage ||
+			showOptions ||
+			optionPanel ||
+			viewer ||
+			voiceOpen ||
+			attachmentOpen ||
+			stickerOpen ||
+			forwarding
+		) return;
 		const timer = window.setInterval(() => void load(), 2_500);
 		return () => window.clearInterval(timer);
-	}, [actionMessage, attachmentOpen, conversation.id, forwarding, optionPanel, showOptions, stickerOpen, viewer, voiceOpen]);
+	}, [
+		actionMessage,
+		attachmentOpen,
+		conversation.id,
+		forwarding,
+		optionPanel,
+		showOptions,
+		stickerOpen,
+		viewer,
+		voiceOpen,
+	]);
 
 	useEffect(() => {
 		const cached = readMessagePage(conversation.id);
@@ -719,6 +741,30 @@ export function ChatRoom({ conversation, initialMessage, onBack }: Props) {
 		if (capabilities?.attachments) return 'chat-attachment';
 		if (capabilities?.voiceNotes) return 'chat-voice';
 		return 'chat-compose';
+	};
+
+	const controlAfterVoice = () => {
+		if (capabilities?.attachments) return 'chat-attachment';
+		if (capabilities?.stickers) return 'chat-stickers';
+		return draft ? 'chat-clear-draft' : 'chat-compose';
+	};
+
+	const controlAfterAttachment = () => {
+		if (capabilities?.stickers) return 'chat-stickers';
+		return draft ? 'chat-clear-draft' : 'chat-compose';
+	};
+
+	const controlBeforeSticker = () => {
+		if (capabilities?.attachments) return 'chat-attachment';
+		if (capabilities?.voiceNotes) return 'chat-voice';
+		return 'chat-stickers';
+	};
+
+	const controlBeforeClear = () => {
+		if (capabilities?.stickers) return 'chat-stickers';
+		if (capabilities?.attachments) return 'chat-attachment';
+		if (capabilities?.voiceNotes) return 'chat-voice';
+		return 'chat-clear-draft';
 	};
 
 	const openMessageActions = () => {
@@ -1007,6 +1053,10 @@ export function ChatRoom({ conversation, initialMessage, onBack }: Props) {
 		if (voiceOpen) window.requestAnimationFrame(() => focus('voice-toggle'));
 	}, [focus, voiceOpen]);
 
+	useEffect(() => {
+		if (attachmentOpen) window.requestAnimationFrame(() => focus('attachment-choose'));
+	}, [attachmentOpen, focus]);
+
 	const goBack = () => {
 		if (stickerOpen) {
 			setStickerOpen(false);
@@ -1035,6 +1085,18 @@ export function ChatRoom({ conversation, initialMessage, onBack }: Props) {
 		onBack();
 	};
 
+	const composerSoftkeyLabel = () => {
+		if (composeControl === 'voice') return 'Record';
+		if (composeControl === 'attachment') return 'Attach';
+		if (composeControl === 'sticker') return 'Stickers';
+		if (composeControl === 'clear') return 'Clear';
+		if (composeControl === 'latest') return 'Latest';
+		if (composeControl === 'send') return editing ? 'Save' : 'Send';
+		if (composerFocused) return 'Type';
+		if (selectedMessageId) return 'Open';
+		return 'Type';
+	};
+
 	useSoftkeys(
 		{
 			left:
@@ -1057,23 +1119,8 @@ export function ChatRoom({ conversation, initialMessage, onBack }: Props) {
 							}
 						: showOptions || optionPanel
 							? { label: 'Select', onPress: activate }
-							: {
-									label:
-										composeControl === 'voice'
-											? 'Record'
-											: composeControl === 'clear'
-												? 'Clear'
-												: composeControl === 'latest'
-													? 'Latest'
-													: composeControl === 'send'
-														? editing
-															? 'Save'
-															: 'Send'
-														: composerFocused
-															? 'Type'
-															: selectedMessageId
-																? 'Open'
-																: 'Type',
+					: {
+									label: composerSoftkeyLabel(),
 									onPress: () => {
 										if (composeControl) activate();
 										else if (composerFocused) inputRef.current?.focus();
@@ -1480,7 +1527,7 @@ export function ChatRoom({ conversation, initialMessage, onBack }: Props) {
 						}}
 						onArrow={(key) => {
 							if (key === 'ArrowRight') {
-								focus(capabilities?.attachments ? 'chat-attachment' : capabilities?.stickers ? 'chat-stickers' : draft ? 'chat-clear-draft' : 'chat-compose');
+								focus(controlAfterVoice());
 								return true;
 							}
 							return true;
@@ -1488,7 +1535,7 @@ export function ChatRoom({ conversation, initialMessage, onBack }: Props) {
 						onClick={() => setVoiceOpen(true)}
 						aria-label="Record voice note"
 					>
-						●
+						<AppIcon name="mic" />
 					</FocusButton>
 				)}
 				{capabilities?.attachments && (
@@ -1497,15 +1544,20 @@ export function ChatRoom({ conversation, initialMessage, onBack }: Props) {
 						vertical={false}
 						class={styles.utility}
 						type="button"
+						onFocus={() => {
+							setComposeControl('attachment');
+							setComposerFocused(false);
+							setSelectedMessageId(undefined);
+						}}
 						onArrow={(key) => {
 							if (key === 'ArrowLeft') focus(capabilities?.voiceNotes ? 'chat-voice' : 'chat-attachment');
-							if (key === 'ArrowRight') focus(capabilities?.stickers ? 'chat-stickers' : draft ? 'chat-clear-draft' : 'chat-compose');
+							if (key === 'ArrowRight') focus(controlAfterAttachment());
 							return true;
 						}}
 						onClick={() => setAttachmentOpen(true)}
 						aria-label="Send attachment"
 					>
-						+
+						<AppIcon name="attach" />
 					</FocusButton>
 				)}
 				{capabilities?.stickers && (
@@ -1514,15 +1566,20 @@ export function ChatRoom({ conversation, initialMessage, onBack }: Props) {
 						vertical={false}
 						class={styles.utility}
 						type="button"
+						onFocus={() => {
+							setComposeControl('sticker');
+							setComposerFocused(false);
+							setSelectedMessageId(undefined);
+						}}
 						onArrow={(key) => {
-							if (key === 'ArrowLeft') focus(capabilities?.attachments ? 'chat-attachment' : capabilities?.voiceNotes ? 'chat-voice' : 'chat-stickers');
+							if (key === 'ArrowLeft') focus(controlBeforeSticker());
 							if (key === 'ArrowRight') focus(draft ? 'chat-clear-draft' : 'chat-compose');
 							return true;
 						}}
 						onClick={() => setStickerOpen(true)}
 						aria-label="Send sticker"
 					>
-						◇
+						<AppIcon name="sticker" />
 					</FocusButton>
 				)}
 				{draft && (
@@ -1531,7 +1588,7 @@ export function ChatRoom({ conversation, initialMessage, onBack }: Props) {
 						class={styles.utility}
 						type="button"
 						onArrow={(key) => {
-							if (key === 'ArrowLeft') focus(capabilities?.stickers ? 'chat-stickers' : capabilities?.attachments ? 'chat-attachment' : capabilities?.voiceNotes ? 'chat-voice' : 'chat-clear-draft');
+							if (key === 'ArrowLeft') focus(controlBeforeClear());
 							if (key === 'ArrowRight') focus('chat-compose');
 							return true;
 						}}

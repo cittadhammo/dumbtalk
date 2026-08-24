@@ -17,14 +17,14 @@
 
 .content {
 	min-height: 0;
-	padding: 7px;
+	padding: 7px 8px 10px;
 	overflow-y: auto;
 }
 
 .grid {
 	display: grid;
 	grid-template-columns: repeat(2, minmax(0, 1fr));
-	gap: 5px;
+	gap: 6px;
 }
 
 .grid button,
@@ -34,29 +34,52 @@
 	min-width: 0;
 	min-height: 34px;
 	align-items: center;
-	gap: 5px;
+	gap: 7px;
 	padding: 6px 7px;
-	background: linear-gradient(145deg, #1a3029, #13251f);
-	border: 1px solid #304b42;
-	border-radius: 7px;
+	background: linear-gradient(145deg, #1b342b, #12251f);
+	border: 1px solid #345449;
+	border-radius: 9px;
+	box-shadow: 0 2px 6px #0004;
 	color: tokens.$text;
 	font-size: 11px;
 	text-align: left;
 }
 
-.grid button > span:first-child {
+.grid button {
+	min-height: 45px;
+}
+
+.tileIcon {
 	display: inline-grid;
-	width: 18px;
-	flex: 0 0 18px;
+	width: 29px;
+	height: 29px;
+	flex: 0 0 29px;
 	place-items: center;
+	background: linear-gradient(145deg, #315b4d, #244239);
+	border: 1px solid #ffffff18;
+	border-radius: 8px;
+	color: #dcebe5;
+	font-size: 18px;
+}
+
+.tileLabel {
+	min-width: 0;
+	font-size: 11px;
+	font-weight: 650;
+	line-height: 1.12;
 }
 
 .heading {
+	display: flex;
+	align-items: center;
+	gap: 4px;
 	margin: 8px 2px 4px;
 	color: tokens.$muted;
 	font-size: 10px;
 	font-weight: 700;
 }
+
+.heading svg { font-size: 13px; }
 
 .inputRow {
 	display: grid;
@@ -87,6 +110,54 @@
 	display: grid;
 	gap: 4px;
 	margin-top: 6px;
+}
+
+.settingsList {
+	display: grid;
+	gap: 5px;
+}
+
+.settingsList button {
+	display: flex;
+	width: 100%;
+	min-height: 36px;
+	align-items: center;
+	padding: 7px 9px;
+	background: linear-gradient(145deg, #1b342b, #12251f);
+	border: 1px solid #345449;
+	border-radius: 8px;
+	color: tokens.$text;
+	font-size: 11px;
+	text-align: left;
+}
+
+.settingsList button > span:first-child { flex: 1; }
+
+.switch {
+	min-width: 30px;
+	padding: 2px 5px;
+	background: #263b34;
+	border-radius: 9px;
+	color: #91a69d;
+	font-size: 8px;
+	font-weight: 800;
+	text-align: center;
+}
+
+.switchOn {
+	background: #285eb8;
+	color: white;
+}
+
+.choiceGrid button {
+	min-height: 33px;
+	gap: 5px;
+	box-shadow: none;
+}
+
+.choiceMark {
+	color: #8db6ff;
+	font-size: 12px;
 }
 
 .results button {

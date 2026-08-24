@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 import { createReadStream, existsSync } from "node:fs";
-import { mkdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rename, stat, unlink, writeFile } from "node:fs/promises";
 import { basename, extname, join, normalize } from "node:path";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { spawn } from "node:child_process";
@@ -1029,12 +1029,65 @@ async function api(req, res, url) {
     if (!source.sticker && !common.message && !attachmentPaths.length) return json(res, 400, { error: "This message cannot be forwarded" });
     const params = input.kind === "group" ? { ...common, groupId: input.target } : input.target === account ? { ...common, noteToSelf: true } : { ...common, recipient: [input.target] };
     const result = await rpc("send", params, 180_000); const timestamp = Number(result?.timestamp || Date.now());
-    const sent = { ...source, id: `${timestamp}-out`, conversationId: `${input.kind}:${input.target}`, direction: "out", sender: account, senderId: account, timestamp, status: "sent", receipts: {}, reactions: [], quote: null, pinned: false };
+    const sent = {
+      ...source,
+      id: `${timestamp}-out`,
+      conversationId: `${input.kind}:${input.target}`,
+      direction: "out",
+      sender: account,
+      senderId: account,
+      timestamp,
+      status: "sent",
+      receipts: {},
+      reactions: [],
+      quote: null,
+      pinned: false,
+      forwardedFrom: source.forwardedFrom || (source.direction === "out" ? "You" : source.sender || "Someone"),
+    };
     messages.push(sent); await persistMessages(); return json(res, 200, { message: sent });
   }
   if (url.pathname === "/api/stickers" && req.method === "GET") {
+    const account = await getAccount();
+    const knownPacks = await rpc("listStickerPacks", { account }).catch(error => {
+      log("list sticker packs failed", error.message);
+      return [];
+    });
     const unique = new Map();
-    for (const message of messages) if (message.sticker?.packId && message.sticker?.stickerId) { const key = `${message.sticker.packId}:${message.sticker.stickerId}`; unique.set(key, { id: key, packId: message.sticker.packId, stickerId: message.sticker.stickerId, emoji: message.sticker.emoji || "", path: `/api/sticker/${encodeURIComponent(message.sticker.packId)}/${encodeURIComponent(message.sticker.stickerId)}` }); }
+    for (const pack of Array.isArray(knownPacks) ? knownPacks : knownPacks?.stickerPacks || knownPacks?.packs || []) {
+      const packId = String(pack.packId || pack.id || pack.pack_id || "");
+      if (!packId) continue;
+      const title = String(pack.title || pack.name || "Sticker pack");
+      const listed = Array.isArray(pack.stickers) ? pack.stickers : [];
+      const local = await readdir(join(SIGNAL_DIR, "stickers", basename(packId))).catch(() => []);
+      const entries = listed.length
+        ? listed
+        : local.map((name, index) => ({ stickerId: /^\d+$/.test(name) ? Number(name) : index }));
+      for (const [index, sticker] of entries.entries()) {
+        const stickerId = String(sticker.stickerId ?? sticker.id ?? sticker.index ?? index);
+        const key = `${packId}:${stickerId}`;
+        unique.set(key, {
+          id: key,
+          packId,
+          stickerId,
+          packTitle: title,
+          emoji: sticker.emoji || "",
+          path: `/api/sticker/${encodeURIComponent(packId)}/${encodeURIComponent(stickerId)}`,
+        });
+      }
+    }
+    for (const message of messages) {
+      if (!message.sticker?.packId || message.sticker?.stickerId === undefined) continue;
+      const key = `${message.sticker.packId}:${message.sticker.stickerId}`;
+      if (unique.has(key)) continue;
+      unique.set(key, {
+        id: key,
+        packId: message.sticker.packId,
+        stickerId: String(message.sticker.stickerId),
+        packTitle: "Recent stickers",
+        emoji: message.sticker.emoji || "",
+        path: `/api/sticker/${encodeURIComponent(message.sticker.packId)}/${encodeURIComponent(message.sticker.stickerId)}`,
+      });
+    }
     return json(res, 200, { stickers: [...unique.values()].slice(-120).reverse() });
   }
   if (url.pathname === "/api/sticker/send" && req.method === "POST") {
@@ -1083,7 +1136,15 @@ async function api(req, res, url) {
   if (url.pathname.startsWith("/api/sticker/") && req.method === "GET") {
     const parts = url.pathname.slice(13).split("/"); const packId = basename(decodeURIComponent(parts[0] || "")); const stickerId = basename(decodeURIComponent(parts[1] || ""));
     const path = join(SIGNAL_DIR, "stickers", packId, stickerId); const info = await stat(path).catch(() => null);
-    if (!info?.isFile()) return json(res, 404, { error: "Sticker unavailable" });
+    if (!info?.isFile()) {
+      const account = await getAccount();
+      const result = await rpc("getSticker", { account, packId, stickerId: Number(stickerId) }).catch(() => null);
+      const encoded = typeof result === "string" ? result : result?.data || result?.base64;
+      if (!encoded) return json(res, 404, { error: "Sticker unavailable" });
+      const data = Buffer.from(encoded, "base64");
+      res.writeHead(200, { "content-type": "image/webp", "content-length": data.length, "cache-control": "private, max-age=3600" });
+      return res.end(data);
+    }
     res.writeHead(200, { "content-type": "image/webp", "content-length": info.size, "cache-control": "private, max-age=3600" }); return createReadStream(path).pipe(res);
   }
   if (url.pathname.startsWith("/api/avatar/") && req.method === "GET") {

@@ -82,6 +82,7 @@ export type UniversalSticker = {
 	packId: string;
 	stickerId: string;
 	emoji?: string;
+	packTitle?: string;
 	path: string;
 };
 
@@ -115,6 +116,7 @@ export type UniversalMessage = {
 	viewOnce?: { opened: boolean };
 	previews?: UniversalLinkPreview[];
 	stickerPath?: string;
+	forwardedFrom?: string;
 };
 
 export type ConversationMember = {

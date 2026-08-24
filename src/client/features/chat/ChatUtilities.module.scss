@@ -7,29 +7,75 @@
 	left: 4px;
 	z-index: 6;
 	display: grid;
-	grid-template-columns: minmax(0, 1fr) auto auto;
-	gap: 4px;
+	gap: 6px;
 	align-items: center;
-	padding: 6px;
-	background: #10231d;
-	border: 1px solid #486b5e;
-	border-radius: 8px;
-	box-shadow: 0 4px 14px #000b;
+	padding: 8px;
+	background: linear-gradient(145deg, #173129f7, #0d1e19f7);
+	border: 1px solid #527b6c;
+	border-radius: 10px;
+	box-shadow: 0 6px 18px #000d;
 }
 
 .composer button {
-	min-height: 28px;
-	padding: 4px 6px;
-	background: #203b32;
+	display: flex;
+	min-height: 31px;
+	align-items: center;
+	justify-content: center;
+	gap: 6px;
+	padding: 5px 7px;
+	background: #23463a;
 	border: 1px solid #486b5e;
 	border-radius: 5px;
 	color: tokens.$text;
 	font-size: 10px;
+	font-weight: 700;
 }
+
+.composer button svg { font-size: 15px; }
+
+.composerTitle {
+	display: flex;
+	min-width: 0;
+	align-items: center;
+	gap: 7px;
+}
+
+.composerTitle > span:last-child {
+	display: grid;
+	min-width: 0;
+}
+
+.composerTitle strong { font-size: 12px; }
+
+.composerTitle small {
+	overflow: hidden;
+	color: tokens.$muted;
+	font-size: 9px;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.composerIcon {
+	display: grid;
+	width: 28px;
+	height: 28px;
+	flex: 0 0 28px;
+	place-items: center;
+	background: #315b4d;
+	border-radius: 8px;
+	font-size: 17px;
+}
+
+.composerActions {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 5px;
+}
+
+.composerActions button:last-child { background: #285eb8; }
 
 .fileInfo,
 .error {
-	grid-column: 1 / -1;
 	font-size: 9px;
 }
 
@@ -46,12 +92,17 @@
 }
 
 .overlayScreen > header {
+	display: flex;
+	align-items: center;
+	gap: 6px;
 	padding: 6px 9px;
 	background: linear-gradient(135deg, #15342a, #10201b 70%);
 	border-bottom: 1px solid tokens.$line;
 	font-size: 13px;
 	font-weight: 700;
 }
+
+.overlayScreen > header svg { font-size: 15px; }
 
 .stickerGrid {
 	display: grid;
@@ -78,6 +129,12 @@
 	object-fit: contain;
 }
 
+.stickerGrid .moreStickers {
+	aspect-ratio: 1;
+	color: tokens.$muted;
+	font-size: 9px;
+}
+
 .conversationList {
 	display: grid;
 	gap: 4px;
@@ -87,25 +144,64 @@
 
 .conversationList button {
 	display: flex;
-	min-height: 34px;
+	min-height: 38px;
 	flex-direction: column;
 	align-items: flex-start;
 	justify-content: center;
+	gap: 2px;
 	padding: 5px 7px;
-	background: #172a23;
-	border: 1px solid #304b42;
-	border-radius: 6px;
+	background: linear-gradient(145deg, #1b342b, #12251f);
+	border: 1px solid #345449;
+	border-radius: 8px;
+	box-shadow: 0 2px 5px #0004;
 	color: tokens.$text;
 	font-size: 11px;
 }
 
-.conversationList span {
+.destinationList button {
+	display: grid;
+	min-height: 44px;
+	grid-template-columns: 32px minmax(0, 1fr);
+	align-items: center;
+	gap: 7px;
+}
+
+.conversationList > button > span:not(.destinationAvatar) {
 	width: 100%;
 	overflow: hidden;
 	color: tokens.$muted;
 	font-size: 9px;
 	text-overflow: ellipsis;
 	white-space: nowrap;
+}
+
+.destinationAvatar {
+	display: grid;
+	width: 30px;
+	height: 30px;
+	place-items: center;
+	background: #31584b;
+	border-radius: 50%;
+	color: white;
+	font-size: 9px;
+	font-weight: 800;
+}
+
+.destinationText {
+	display: grid;
+	min-width: 0;
+}
+
+.destinationText strong {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.destinationText small {
+	color: tokens.$muted;
+	font-size: 9px;
+	text-transform: capitalize;
 }
 
 .searchContent {

@@ -58,6 +58,7 @@ export function MediaViewer({
 	onChange: (direction: number) => void;
 }) {
 	const [zoomed, setZoomed] = useState(false);
+	const [zoomAxis, setZoomAxis] = useState<'vertical' | 'horizontal'>('vertical');
 	const [playing, setPlaying] = useState(false);
 	const bodyRef = useRef<HTMLElement>(null);
 	const videoRef = useRef<HTMLVideoElement>(null);
@@ -73,6 +74,29 @@ export function MediaViewer({
 		if (!video) return;
 		if (video.paused) void video.play();
 		else video.pause();
+	};
+	const pan = (key: string) => {
+		const body = bodyRef.current;
+		if (!body) return false;
+		const vertical = key === 'ArrowUp' || key === 'ArrowDown';
+		const direction = key === 'ArrowUp' || key === 'ArrowLeft' ? -1 : 1;
+		const available = vertical
+			? body.scrollHeight - body.clientHeight
+			: body.scrollWidth - body.clientWidth;
+		const position = vertical ? body.scrollTop : body.scrollLeft;
+		const atEdge = direction < 0 ? position <= 1 : position >= available - 1;
+		if (zoomed && available > 1 && !atEdge) {
+			body.scrollBy({
+				top: vertical ? direction * Math.max(100, body.clientHeight * 0.72) : 0,
+				left: vertical ? 0 : direction * Math.max(100, body.clientWidth * 0.72),
+			});
+			return true;
+		}
+		if (!vertical && media.length > 1) {
+			onChange(direction);
+			return true;
+		}
+		return zoomed && available > 1;
 	};
 
 	useSoftkeys(
@@ -95,17 +119,14 @@ export function MediaViewer({
 	useEffect(() => {
 		const onKeyDown = (event: KeyboardEvent) => {
 			if (event.key === 'Enter') toggle();
-			else if (event.key === 'ArrowLeft' && media.length > 1) onChange(-1);
-			else if (event.key === 'ArrowRight' && media.length > 1) onChange(1);
-			else if (zoomed && event.key === 'ArrowUp') bodyRef.current?.scrollBy({ top: -120 });
-			else if (zoomed && event.key === 'ArrowDown') bodyRef.current?.scrollBy({ top: 120 });
+			else if (event.key.startsWith('Arrow') && pan(event.key)) undefined;
 			else return;
 			event.preventDefault();
 			event.stopPropagation();
 		};
 		window.addEventListener('keydown', onKeyDown, true);
 		return () => window.removeEventListener('keydown', onKeyDown, true);
-	}, [media.length, onChange, zoomed]);
+	}, [media.length, onChange, zoomed, zoomAxis]);
 
 	return (
 		<main class={styles.viewer}>
@@ -113,7 +134,12 @@ export function MediaViewer({
 				{attachment.kind === 'video' ? 'Video' : `Photo ${index + 1} of ${media.length}`}
 				{attachment.kind === 'image' && <span>{zoomed ? 'Width' : 'Fit'}</span>}
 			</header>
-			<section ref={bodyRef} class={`${styles.viewerBody} ${zoomed ? styles.zoomed : ''}`}>
+			<section
+				ref={bodyRef}
+				class={`${styles.viewerBody} ${zoomed ? styles.zoomed : styles.fitted} ${
+					zoomAxis === 'vertical' ? styles.zoomVertical : styles.zoomHorizontal
+				}`}
+			>
 				{source && attachment.kind === 'video' && (
 					<video
 						ref={videoRef}
@@ -125,7 +151,18 @@ export function MediaViewer({
 						onPause={() => setPlaying(false)}
 					/>
 				)}
-				{source && attachment.kind === 'image' && <img src={source} alt={attachment.caption ?? 'Photo'} />}
+				{source && attachment.kind === 'image' && (
+					<img
+						src={source}
+						alt={attachment.caption ?? 'Photo'}
+						onLoad={(event) => {
+							const body = bodyRef.current;
+							if (!body) return;
+							const imageRatio = event.currentTarget.naturalWidth / event.currentTarget.naturalHeight;
+							setZoomAxis(imageRatio < body.clientWidth / body.clientHeight ? 'vertical' : 'horizontal');
+						}}
+					/>
+				)}
 				{!source && <p>Loading media…</p>}
 			</section>
 		</main>

@@ -1,19 +1,20 @@
 @use '../../styles/tokens';
 
 .screen {
-	min-height: 100%;
-	padding-bottom: 8px;
+	height: 100%;
+	overflow-y: auto;
 }
 
 .header {
 	position: sticky;
 	top: 0;
 	z-index: 2;
-	height: 38px;
-	padding: 9px 10px;
+	height: 29px;
+	padding: 6px 9px;
 	background: linear-gradient(135deg, #15342a, #10201b 70%);
 	border-bottom: 1px solid tokens.$line;
 	box-shadow: 0 2px 8px #0005;
+	font-size: 13px;
 	font-weight: 700;
 }
 
@@ -24,7 +25,8 @@
 .intro {
 	margin: 4px 4px 9px;
 	color: tokens.$muted;
-	font-size: 12px;
+	font-size: 10px;
+	line-height: 1.35;
 }
 
 .card {
@@ -32,24 +34,26 @@
 	width: 100%;
 	align-items: center;
 	gap: 8px;
-	min-height: 48px;
+	min-height: 52px;
 	margin-bottom: 5px;
 	padding: 7px;
-	border: 1px solid #2c473e;
-	border-radius: 8px;
-	background: linear-gradient(145deg, #1a3029, #13251f);
+	border: 1px solid #345449;
+	border-radius: 9px;
+	background: linear-gradient(145deg, #1b342b, #12251f);
+	box-shadow: 0 2px 6px #0004;
 	color: tokens.$text;
 	text-align: left;
 }
 
 .icon {
 	display: grid;
-	width: 29px;
-	height: 29px;
-	flex: 0 0 29px;
+	width: 33px;
+	height: 33px;
+	flex: 0 0 33px;
 	place-items: center;
 	background: #28473c;
-	border-radius: 8px;
+	border: 1px solid #ffffff18;
+	border-radius: 9px;
 	font-weight: 800;
 }
 

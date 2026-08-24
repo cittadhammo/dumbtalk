@@ -2,6 +2,7 @@ import type { ComponentChildren } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
 import { FocusButton } from '../../components/FocusButton';
 import { FocusInput } from '../../components/FocusInput';
+import { AppIcon } from '../../components/AppIcon';
 import { useFocusManager } from '../../platform/Focus';
 import { useSoftkeys } from '../../platform/Softkeys';
 import { useMessagingServices } from '../../services/ServiceContext';
@@ -69,22 +70,28 @@ export function MainMenu({
 			{error && <p class={styles.error}>{error}</p>}
 			<div class={styles.grid}>
 				<FocusButton id="menu-compose" grid="main-menu" columns={2} autoFocus onClick={onCompose}>
-					<span>✎</span> New message
+					<span class={styles.tileIcon}><AppIcon name="compose" /></span>
+					<span class={styles.tileLabel}>New message</span>
 				</FocusButton>
 				<FocusButton id="menu-group" grid="main-menu" columns={2} onClick={onGroup}>
-					<span>♟</span> New group
+					<span class={styles.tileIcon}><AppIcon name="group" /></span>
+					<span class={styles.tileLabel}>New group</span>
 				</FocusButton>
 				<FocusButton id="menu-search" grid="main-menu" columns={2} onClick={onSearch}>
-					<span>⌕</span> Search
+					<span class={styles.tileIcon}><AppIcon name="search" /></span>
+					<span class={styles.tileLabel}>Search</span>
 				</FocusButton>
 				<FocusButton id="menu-archived" grid="main-menu" columns={2} onClick={onArchived}>
-					<span>▣</span> Archived
+					<span class={styles.tileIcon}><AppIcon name="archive" /></span>
+					<span class={styles.tileLabel}>Archived</span>
 				</FocusButton>
 				<FocusButton id="menu-settings" grid="main-menu" columns={2} onClick={onSettings}>
-					<span>⚙</span> Settings
+					<span class={styles.tileIcon}><AppIcon name="settings" /></span>
+					<span class={styles.tileLabel}>Settings</span>
 				</FocusButton>
 				<FocusButton id="menu-services" grid="main-menu" columns={2} onClick={onServices}>
-					<span>◉</span> Services
+					<span class={styles.tileIcon}><AppIcon name="services" /></span>
+					<span class={styles.tileLabel}>Services</span>
 				</FocusButton>
 			</div>
 			{selected && (
@@ -97,7 +104,8 @@ export function MainMenu({
 							columns={2}
 							onClick={() => update({ favourite: !selected.isFavourite })}
 						>
-							<span>★</span> {selected.isFavourite ? 'Unfavourite' : 'Favourite'}
+							<span class={styles.tileIcon}><AppIcon name="star" /></span>
+							<span class={styles.tileLabel}>{selected.isFavourite ? 'Unfavourite' : 'Favourite'}</span>
 						</FocusButton>
 						<FocusButton
 							id="menu-mute"
@@ -105,7 +113,8 @@ export function MainMenu({
 							columns={2}
 							onClick={() => update({ muted: !selected.isMuted })}
 						>
-							<span>{selected.isMuted ? '♩' : '♪'}</span> {selected.isMuted ? 'Unmute' : 'Mute'}
+							<span class={styles.tileIcon}><AppIcon name="mute" /></span>
+							<span class={styles.tileLabel}>{selected.isMuted ? 'Unmute' : 'Mute'}</span>
 						</FocusButton>
 						<FocusButton
 							id="menu-archive"
@@ -113,7 +122,8 @@ export function MainMenu({
 							columns={2}
 							onClick={() => update({ archived: !selected.isArchived })}
 						>
-							<span>□</span> {selected.isArchived ? 'Unarchive' : 'Archive'}
+							<span class={styles.tileIcon}><AppIcon name="archive" /></span>
+							<span class={styles.tileLabel}>{selected.isArchived ? 'Unarchive' : 'Archive'}</span>
 						</FocusButton>
 					</div>
 				</>
@@ -165,7 +175,7 @@ export function SearchScreen({
 						if (event.key === 'Enter') search();
 					}}
 				/>
-				<FocusButton id="global-search-submit" onClick={search}>⌕</FocusButton>
+				<FocusButton id="global-search-submit" aria-label="Search" onClick={search}><AppIcon name="search" /></FocusButton>
 			</div>
 			{error && <p class={styles.error}>{error}</p>}
 			<div class={styles.results}>
@@ -268,7 +278,11 @@ export function NewGroupScreen({ onBack }: BackProps) {
 					return (
 						<FocusButton
 							id={`group-member-${contact.id}`}
-							onClick={() => setMembers((current) => chosen ? current.filter((item) => item !== target) : [...current, target])}
+							onClick={() =>
+								setMembers((current) =>
+									chosen ? current.filter((item) => item !== target) : [...current, target],
+								)
+							}
 						>
 							{chosen ? '●' : '○'} {contact.title}
 						</FocusButton>
@@ -308,7 +322,12 @@ export function SettingsScreen({ onBack }: BackProps) {
 
 	const save = () => {
 		if (!service || !settings) return;
-		void service.updateSettings(settings).then(onBack).catch((reason) => setError(reason instanceof Error ? reason.message : 'Unable to save settings'));
+		void service
+			.updateSettings(settings)
+			.then(onBack)
+			.catch((reason) =>
+				setError(reason instanceof Error ? reason.message : 'Unable to save settings'),
+			);
 	};
 
 	return (
@@ -316,19 +335,34 @@ export function SettingsScreen({ onBack }: BackProps) {
 			{!settings && !error && <p>Loading…</p>}
 			{settings && (
 				<>
-					<div class={styles.results}>
+					<div class={styles.settingsList}>
 						<FocusButton id="setting-receipts" autoFocus onClick={() => toggle('sendReadReceipts')}>
-							{settings.sendReadReceipts ? '●' : '○'} Read receipts
+							<span>Read receipts</span>
+							<span
+								class={`${styles.switch} ${settings.sendReadReceipts ? styles.switchOn : ''}`}
+							>
+								{settings.sendReadReceipts ? 'On' : 'Off'}
+							</span>
 						</FocusButton>
 						<FocusButton id="setting-typing" onClick={() => toggle('sendTypingIndicators')}>
-							{settings.sendTypingIndicators ? '●' : '○'} Typing indicators
+							<span>Typing indicators</span>
+							<span
+								class={`${styles.switch} ${settings.sendTypingIndicators ? styles.switchOn : ''}`}
+							>
+								{settings.sendTypingIndicators ? 'On' : 'Off'}
+							</span>
 						</FocusButton>
 						<FocusButton id="setting-previews" onClick={() => toggle('linkPreviews')}>
-							{settings.linkPreviews ? '●' : '○'} Link previews
+							<span>Link previews</span>
+							<span
+								class={`${styles.switch} ${settings.linkPreviews ? styles.switchOn : ''}`}
+							>
+								{settings.linkPreviews ? 'On' : 'Off'}
+							</span>
 						</FocusButton>
 					</div>
-					<p class={styles.heading}>Default disappearing messages</p>
-					<div class={styles.grid}>
+					<p class={styles.heading}><AppIcon name="timer" /> Default disappearing messages</p>
+					<div class={`${styles.grid} ${styles.choiceGrid}`}>
 						{expirationOptions.map((option) => (
 							<FocusButton
 								id={`setting-expiration-${option.value}`}
@@ -336,7 +370,8 @@ export function SettingsScreen({ onBack }: BackProps) {
 								columns={2}
 								onClick={() => setSettings({ ...settings, defaultExpiration: option.value })}
 							>
-								{settings.defaultExpiration === option.value ? '● ' : '○ '}{option.label}
+								<span class={styles.choiceMark}>{settings.defaultExpiration === option.value ? '●' : '○'}</span>
+								<span>{option.label}</span>
 							</FocusButton>
 						))}
 					</div>

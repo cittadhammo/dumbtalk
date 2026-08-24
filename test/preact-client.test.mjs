@@ -36,11 +36,16 @@ test('Preact client uses component state instead of DOM mutation', async () => {
 	assert.match(source, /class=\{styles\.pinnedOverlay\}/);
 	assert.match(source, /class=\{styles\.voiceComposer\}/);
 	assert.match(source, /handle\.current\?\.update\(config\)/);
+	assert.match(source, /function AppIcon/);
+	assert.match(source, /navigator\.hasFeature\('ImageUpload'\)/);
+	assert.match(source, /styles\.zoomVertical/);
+	assert.match(source, /message\.forwardedFrom/);
 });
 
 test('universal messaging contract covers rich messages and service management', async () => {
 	const contract = await readFile(new URL('../src/client/services/contracts.ts', import.meta.url), 'utf8');
 	const signal = await readFile(new URL('../src/client/services/signal.ts', import.meta.url), 'utf8');
+	const server = await readFile(new URL('../server.mjs', import.meta.url), 'utf8');
 
 	for (const feature of [
 		'reactions',
@@ -85,4 +90,7 @@ test('universal messaging contract covers rich messages and service management',
 	]) {
 		assert.match(signal, new RegExp(route.replaceAll('/', '\\/')));
 	}
+
+	assert.match(server, /rpc\("listStickerPacks"/);
+	assert.match(server, /forwardedFrom: source\.forwardedFrom/);
 });

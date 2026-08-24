@@ -44,6 +44,7 @@ type SignalMessage = {
 	receipts?: Record<string, { status?: string; name?: string; at?: number }>;
 	previews?: { title?: string; description?: string; url?: string }[];
 	sticker?: { packId: string; stickerId: string };
+	forwardedFrom?: string;
 	mentions?: {
 		start?: number;
 		length?: number;
@@ -169,6 +170,7 @@ function toUniversalMessage(message: SignalMessage): UniversalMessage {
 		stickerPath: message.sticker
 			? `/api/sticker/${encodeURIComponent(message.sticker.packId)}/${encodeURIComponent(message.sticker.stickerId)}`
 			: undefined,
+		forwardedFrom: message.forwardedFrom,
 	};
 }
 
