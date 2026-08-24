@@ -27,6 +27,8 @@ test('Preact client uses component state instead of DOM mutation', async () => {
 	assert.match(source, /function ChatOptions/);
 	assert.match(source, /compareDocumentPosition/);
 	assert.match(source, /sort\(documentOrder\)/);
+	assert.match(source, /ref=\{combinedRef\}/);
+	assert.doesNotMatch(source, /ref=\{\(element\) => \{\s*ref\(element\)/);
 });
 
 test('universal messaging contract covers rich messages and service management', async () => {

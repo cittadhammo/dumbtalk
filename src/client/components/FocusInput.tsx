@@ -1,4 +1,5 @@
 import type { JSX } from 'preact';
+import { useCallback } from 'preact/hooks';
 import { useFocusable, type FocusRegistration } from '../platform/Focus';
 
 type Props = Omit<JSX.InputHTMLAttributes<HTMLInputElement>, 'ref'> & FocusRegistration;
@@ -10,6 +11,13 @@ type FocusInputProps = Props & {
 export function FocusInput({ id, grid, columns, onArrow, inputRef, onKeyDown, ...props }: FocusInputProps) {
 	const { autoFocus, ...inputProps } = props;
 	const ref = useFocusable({ id, grid, columns, onArrow, initial: Boolean(autoFocus) });
+	const combinedRef = useCallback(
+		(element: HTMLInputElement | null) => {
+			ref(element);
+			if (inputRef) inputRef.current = element;
+		},
+		[inputRef, ref],
+	);
 
 	return (
 		<input
@@ -26,10 +34,7 @@ export function FocusInput({ id, grid, columns, onArrow, inputRef, onKeyDown, ..
 
 				onKeyDown?.(event);
 			}}
-			ref={(element) => {
-				ref(element);
-				if (inputRef) inputRef.current = element;
-			}}
+			ref={combinedRef}
 		/>
 	);
 }

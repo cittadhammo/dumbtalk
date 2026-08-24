@@ -1,4 +1,5 @@
 import type { ComponentChildren, JSX } from 'preact';
+import { useCallback } from 'preact/hooks';
 import { useFocusable, type FocusRegistration } from '../platform/Focus';
 import focusStyles from '../styles/FocusButton.module.scss';
 
@@ -12,17 +13,17 @@ type FocusButtonProps = Props & {
 export function FocusButton({ id, grid, columns, onArrow, children, buttonRef, ...props }: FocusButtonProps) {
 	const { autoFocus, ...buttonProps } = props;
 	const ref = useFocusable({ id, grid, columns, onArrow, initial: Boolean(autoFocus) });
+	const combinedRef = useCallback(
+		(element: HTMLButtonElement | null) => {
+			ref(element);
+			if (buttonRef) buttonRef.current = element;
+		},
+		[buttonRef, ref],
+	);
 	const className = `${focusStyles.button} ${buttonProps.class ?? ''}`.trim();
 
 	return (
-		<button
-			{...buttonProps}
-			ref={(element) => {
-				ref(element);
-				if (buttonRef) buttonRef.current = element;
-			}}
-			class={className}
-		>
+		<button {...buttonProps} ref={combinedRef} class={className}>
 			{children}
 		</button>
 	);
