@@ -418,6 +418,29 @@
 	gap: 4px;
 }
 
+.moreReactions {
+	display: block;
+	width: 100%;
+	margin: 5px 0;
+	padding: 5px;
+	background: #14251f;
+	border: 1px solid #2c473e;
+	border-radius: 6px;
+	color: tokens.$text;
+}
+
+.actionTiles {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 4px;
+}
+
+.actionTiles .action {
+	min-height: 32px;
+	padding: 5px;
+	font-size: 11px;
+}
+
 .reaction {
 	min-height: 32px;
 	padding: 3px;

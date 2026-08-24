@@ -91,6 +91,8 @@ function MessageActions({
 	onEdit,
 	onDelete,
 	onPin,
+	expanded,
+	onToggleExpanded,
 }: {
 	message: UniversalMessage;
 	onReply: () => void;
@@ -98,8 +100,12 @@ function MessageActions({
 	onEdit: () => void;
 	onDelete: () => void;
 	onPin: () => void;
+	expanded: boolean;
+	onToggleExpanded: () => void;
 }) {
-	const reactions = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
+	const reactions = expanded
+		? ['👍', '❤️', '😂', '😮', '😢', '🙏', '🔥', '🎉', '😎', '🤔', '👏', '👎', '💯', '😡', '😱', '🥳', '💔', '✅']
+		: ['👍', '❤️', '😂', '😮', '😢', '🙏'];
 
 	return (
 		<main class={styles.actionScreen}>
@@ -109,37 +115,13 @@ function MessageActions({
 					<strong>{message.direction === 'outgoing' ? 'You' : message.sender ?? 'Message'}</strong>
 					{message.text || attachmentLabel(message) || 'Message'}
 				</p>
-				<FocusButton
-					id="message-action-reply"
-					type="button"
-					class={styles.action}
-					onClick={onReply}
-				>
-					<span class={styles.actionIcon}>↩</span>
-					Reply
-				</FocusButton>
-				<FocusButton id="message-action-pin" type="button" class={styles.action} onClick={onPin}>
-					<span class={styles.actionIcon}>⌖</span>
-					{message.pinned ? 'Unpin message' : 'Pin message'}
-				</FocusButton>
-				{message.direction === 'outgoing' && (
-					<>
-						<FocusButton id="message-action-edit" type="button" class={styles.action} onClick={onEdit}>
-							<span class={styles.actionIcon}>✎</span>
-							Edit message
-						</FocusButton>
-						<FocusButton id="message-action-delete" type="button" class={styles.action} onClick={onDelete}>
-							<span class={styles.actionIcon}>⌫</span>
-							Delete for everyone
-						</FocusButton>
-					</>
-				)}
 				<p class={styles.actionHeading}>Quick reaction</p>
 				<div class={styles.reactionGrid}>
 					{reactions.map((emoji) => (
 						<FocusButton
 							id={`message-reaction-${emoji}`}
 							grid="quick-reactions"
+							columns={3}
 							type="button"
 							class={styles.reaction}
 							onClick={() => onReact(emoji)}
@@ -147,6 +129,15 @@ function MessageActions({
 							{emoji}
 						</FocusButton>
 					))}
+				</div>
+				<FocusButton id="message-more-reactions" type="button" class={styles.moreReactions} onClick={onToggleExpanded}>
+					{expanded ? 'Fewer reactions' : 'More reactions…'}
+				</FocusButton>
+				<div class={styles.actionTiles}>
+					<FocusButton id="message-action-reply" type="button" class={styles.action} onClick={onReply}>↩ Reply</FocusButton>
+					<FocusButton id="message-action-pin" type="button" class={styles.action} onClick={onPin}>⌖ {message.pinned ? 'Unpin' : 'Pin'}</FocusButton>
+					{message.direction === 'outgoing' && <FocusButton id="message-action-edit" type="button" class={styles.action} onClick={onEdit}>✎ Edit</FocusButton>}
+					{message.direction === 'outgoing' && <FocusButton id="message-action-delete" type="button" class={styles.action} onClick={onDelete}>⌫ Delete</FocusButton>}
 				</div>
 			</section>
 		</main>
@@ -170,6 +161,7 @@ export function ChatRoom({ conversation, onBack }: Props) {
 	const [viewer, setViewer] = useState<{ message: UniversalMessage; index: number }>();
 	const [editing, setEditing] = useState<UniversalMessage>();
 	const [editDraft, setEditDraft] = useState('');
+	const [expandedReactions, setExpandedReactions] = useState(false);
 	const [replying, setReplying] = useState<UniversalMessage>();
 	const timelineRef = useRef<HTMLElement>(null);
 	const inputRef = useRef<HTMLInputElement>(null);
@@ -407,7 +399,8 @@ export function ChatRoom({ conversation, onBack }: Props) {
 
 	const reactToMessage = (emoji: string) => {
 		if (!actionMessage) return;
-		void service.react(conversation, actionMessage, emoji)
+		const remove = actionMessage.reactions.some((reaction) => reaction.emoji === emoji && reaction.isOwn);
+		void service.react(conversation, actionMessage, emoji, remove)
 			.then(() => load())
 			.catch((reason) => setError(reason instanceof Error ? reason.message : 'Unable to react'));
 		setActionMessage(undefined);
@@ -529,6 +522,8 @@ export function ChatRoom({ conversation, onBack }: Props) {
 				onEdit={beginEdit}
 				onDelete={deleteMessage}
 				onPin={pinMessage}
+				expanded={expandedReactions}
+				onToggleExpanded={() => setExpandedReactions((value) => !value)}
 			/>
 		);
 	}

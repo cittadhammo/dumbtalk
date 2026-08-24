@@ -6,6 +6,7 @@ export type ArrowKey = 'ArrowUp' | 'ArrowDown' | 'ArrowLeft' | 'ArrowRight';
 export type FocusRegistration = {
 	id: string;
 	grid?: string;
+	columns?: number;
 	initial?: boolean;
 	onArrow?: (key: ArrowKey) => boolean;
 };
@@ -76,15 +77,21 @@ export function FocusProvider({ children }: { children: ComponentChildren }) {
 			if (!all.length) return;
 
 			const index = active ? all.indexOf(active) : 0;
-			if ((arrow === 'ArrowLeft' || arrow === 'ArrowRight') && active?.grid) {
+			if (active?.grid) {
 				const grid = all.filter((item) => item.grid === active.grid);
-				const offset = arrow === 'ArrowLeft' ? -1 : 1;
-				const target = grid[(grid.indexOf(active) + offset + grid.length) % grid.length];
+				const columns = active.columns ?? grid.length;
+				const current = grid.indexOf(active);
+				const offset = arrow === 'ArrowLeft' ? -1 : arrow === 'ArrowRight' ? 1 : arrow === 'ArrowUp' ? -columns : columns;
+				const targetIndex = current + offset;
+				const staysInRow = arrow === 'ArrowLeft' || arrow === 'ArrowRight'
+					? Math.floor(targetIndex / columns) === Math.floor(current / columns)
+					: targetIndex >= 0 && targetIndex < grid.length;
+				const target = staysInRow ? grid[targetIndex] : undefined;
 				if (target) {
 					event.preventDefault();
 					focus(target.id);
+					return;
 				}
-				return;
 			}
 
 			if (arrow === 'ArrowUp' || arrow === 'ArrowDown') {

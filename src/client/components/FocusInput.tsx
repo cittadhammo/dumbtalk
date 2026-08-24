@@ -7,9 +7,9 @@ type FocusInputProps = Props & {
 	inputRef?: { current: HTMLInputElement | null };
 };
 
-export function FocusInput({ id, grid, onArrow, inputRef, onKeyDown, ...props }: FocusInputProps) {
+export function FocusInput({ id, grid, columns, onArrow, inputRef, onKeyDown, ...props }: FocusInputProps) {
 	const { autoFocus, ...inputProps } = props;
-	const ref = useFocusable({ id, grid, onArrow, initial: Boolean(autoFocus) });
+	const ref = useFocusable({ id, grid, columns, onArrow, initial: Boolean(autoFocus) });
 
 	return (
 		<input

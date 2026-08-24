@@ -68,15 +68,11 @@ function PreviewReceipt({ message }: { message?: UniversalMessage }) {
 function Avatar({ conversation }: { conversation: UniversalConversation }) {
 	const source = useProtectedImage(conversation.avatarPath);
 	const className = `${styles.avatar} ${conversation.isNoteToSelf ? styles.noteAvatar : ''}`;
-	const serviceMark = conversation.serviceId === 'signal' ? 'S' : 'T';
 
 	return (
 		<span class={className} aria-hidden="true">
 			{conversation.isNoteToSelf ? '🔖' : initials(conversation.title)}
 			{source && <img src={source} alt="" />}
-			<span class={styles.serviceIcon} aria-label={`${conversation.serviceId} conversation`}>
-				{serviceMark}
-			</span>
 		</span>
 	);
 }
@@ -93,9 +89,13 @@ function ConversationRow({ conversation, onOpen, autoFocus }: { conversation: Un
 			<Avatar conversation={conversation} />
 			<span class={styles.body}>
 				<span class={styles.title}>
-					{conversation.isFavourite && '★ '}
-					{conversation.title}
-					{conversation.unreadCount > 0 && <span class={styles.unread}>{conversation.unreadCount}</span>}
+					<span class={styles.titleText}>{conversation.isFavourite && '★ '}{conversation.title}</span>
+					<span class={styles.indicators}>
+						<span class={styles.serviceIcon} aria-label={`${conversation.serviceId} conversation`}>
+							{conversation.serviceId === 'signal' ? 'S' : 'T'}
+						</span>
+						{conversation.unreadCount > 0 && <span class={styles.unread}>{conversation.unreadCount}</span>}
+					</span>
 				</span>
 				<span class={styles.preview}>
 					{preview(conversation)}

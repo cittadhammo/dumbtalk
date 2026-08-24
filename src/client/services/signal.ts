@@ -183,7 +183,7 @@ export const signalService: MessagingService = {
 		return toUniversalMessage(response.message);
 	},
 
-	async react(conversation, message, emoji): Promise<void> {
+	async react(conversation, message, emoji, remove = false): Promise<void> {
 		const [, target] = conversation.remoteId.split(/:(.*)/s);
 		await api('/api/message/reaction', {
 			method: 'POST',
@@ -192,6 +192,7 @@ export const signalService: MessagingService = {
 				target,
 				timestamp: message.sentAt,
 				emoji,
+				remove,
 			}),
 		});
 	},

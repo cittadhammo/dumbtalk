@@ -85,9 +85,6 @@
 }
 
 .serviceIcon {
-	position: absolute;
-	right: -2px;
-	bottom: -2px;
 	display: grid;
 	width: 13px;
 	height: 13px;
@@ -98,6 +95,19 @@
 	box-shadow: 0 1px 3px #0008;
 	color: white;
 	font: 800 8px/1 system-ui, sans-serif;
+}
+
+.indicators {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	margin-left: auto;
+}
+
+.titleText {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
 .noteAvatar {
@@ -117,6 +127,12 @@
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
+}
+
+.title {
+	display: flex;
+	align-items: center;
+	gap: 4px;
 }
 
 .preview {
@@ -181,7 +197,6 @@
 }
 
 .unread {
-	float: right;
 	min-width: 18px;
 	padding: 1px 5px;
 	background: tokens.$blue;
