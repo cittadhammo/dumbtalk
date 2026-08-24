@@ -79,4 +79,5 @@ export type MessagingService = {
 	markRead: (conversation: UniversalConversation) => Promise<void>;
 	setTyping: (conversation: UniversalConversation, active: boolean) => Promise<void>;
 	sendText: (conversation: UniversalConversation, text: string, replyTo?: UniversalMessage) => Promise<UniversalMessage>;
+	react: (conversation: UniversalConversation, message: UniversalMessage, emoji: string) => Promise<void>;
 };

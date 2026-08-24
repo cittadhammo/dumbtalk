@@ -7,11 +7,12 @@ type Props = Omit<JSX.ButtonHTMLAttributes<HTMLButtonElement>, 'ref'>
 	& { children: ComponentChildren };
 
 export function FocusButton({ id, grid, onArrow, children, ...props }: Props) {
-	const ref = useFocusable({ id, grid, onArrow });
-	const className = `${focusStyles.button} ${props.class ?? ''}`.trim();
+	const { autoFocus, ...buttonProps } = props;
+	const ref = useFocusable({ id, grid, onArrow, initial: Boolean(autoFocus) });
+	const className = `${focusStyles.button} ${buttonProps.class ?? ''}`.trim();
 
 	return (
-		<button {...props} ref={ref} class={className}>
+		<button {...buttonProps} ref={ref} class={className}>
 			{children}
 		</button>
 	);

@@ -6,6 +6,7 @@ export type ArrowKey = 'ArrowUp' | 'ArrowDown' | 'ArrowLeft' | 'ArrowRight';
 export type FocusRegistration = {
 	id: string;
 	grid?: string;
+	initial?: boolean;
 	onArrow?: (key: ArrowKey) => boolean;
 };
 
@@ -39,10 +40,16 @@ export function FocusProvider({ children }: { children: ComponentChildren }) {
 	const register = useMemo<ContextValue['register']>(() => (registration) => (element) => {
 		if (!element) {
 			items.current.delete(registration.id);
+			if (activeId.current === registration.id) activeId.current = undefined;
 			return;
 		}
 
 		items.current.set(registration.id, { ...registration, element });
+		if (registration.initial) {
+			requestAnimationFrame(() => {
+				if (!activeId.current && items.current.get(registration.id)?.element === element) focus(registration.id);
+			});
+		}
 	}, []);
 
 	useEffect(() => {

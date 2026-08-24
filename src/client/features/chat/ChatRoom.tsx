@@ -18,48 +18,6 @@ type Anchor = {
 	top: number;
 };
 
-type OptionsProps = {
-	onBack: () => void;
-	onJumpToLatest: () => void;
-	onClearDraft: () => void;
-};
-
-function ChatOptions({ onBack, onJumpToLatest, onClearDraft }: OptionsProps) {
-	const { activate } = useFocusManager();
-
-	useSoftkeys({
-		center: { label: 'Select', onPress: activate },
-		right: { label: 'Back', onPress: onBack },
-	}, [activate, onBack]);
-
-	return (
-		<main class={styles.options}>
-			<header class={styles.header}>Chat options</header>
-			<section class={styles.optionsList}>
-				<FocusButton
-					id="chat-jump-latest"
-					type="button"
-					class={styles.option}
-					autoFocus
-					onClick={onJumpToLatest}
-				>
-					<span class={styles.optionIcon}>↓</span>
-					<span>Jump to latest message</span>
-				</FocusButton>
-				<FocusButton
-					id="chat-clear-draft"
-					type="button"
-					class={styles.option}
-					onClick={onClearDraft}
-				>
-					<span class={styles.optionIcon}>×</span>
-					<span>Clear draft</span>
-				</FocusButton>
-			</section>
-		</main>
-	);
-}
-
 function attachmentLabel(message: UniversalMessage) {
 	const attachment = message.attachments[0];
 	if (!attachment) return undefined;
@@ -120,6 +78,62 @@ function MessageBubble({
 	);
 }
 
+function MessageActions({
+	message,
+	onBack,
+	onReply,
+	onReact,
+}: {
+	message: UniversalMessage;
+	onBack: () => void;
+	onReply: () => void;
+	onReact: (emoji: string) => void;
+}) {
+	const { activate } = useFocusManager();
+	const reactions = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
+
+	useSoftkeys({
+		center: { label: 'Select', onPress: activate },
+		right: { label: 'Back', onPress: onBack },
+	}, [activate, onBack]);
+
+	return (
+		<main class={styles.actionScreen}>
+			<header class={styles.header}>Message</header>
+			<section class={styles.actionList}>
+				<p class={styles.actionSummary}>
+					<strong>{message.direction === 'outgoing' ? 'You' : message.sender ?? 'Message'}</strong>
+					{message.text || attachmentLabel(message) || 'Message'}
+				</p>
+				<FocusButton
+					id="message-action-reply"
+					type="button"
+					class={styles.action}
+					autoFocus
+					onClick={onReply}
+				>
+					<span class={styles.actionIcon}>↩</span>
+					Reply
+				</FocusButton>
+				<p class={styles.actionHeading}>Quick reaction</p>
+				<div class={styles.reactionGrid}>
+					{reactions.map((emoji) => (
+						<FocusButton
+							id={`message-reaction-${emoji}`}
+							grid="quick-reactions"
+							type="button"
+							class={styles.reaction}
+							onClick={() => onReact(emoji)}
+						>
+							{emoji}
+						</FocusButton>
+					))}
+				</div>
+			</section>
+		</main>
+	);
+}
+
 export function ChatRoom({ conversation, onBack }: Props) {
 	const { serviceFor } = useMessagingServices();
 	const { focus } = useFocusManager();
@@ -128,9 +142,14 @@ export function ChatRoom({ conversation, onBack }: Props) {
 	const [draft, setDraft] = useState(() => localStorage.getItem(`draft:${conversation.id}`) ?? '');
 	const [error, setError] = useState<string>();
 	const [olderNotice, setOlderNotice] = useState<string>();
-	const [showOptions, setShowOptions] = useState(false);
+	const [atBottom, setAtBottom] = useState(true);
+	const [selectedMessageId, setSelectedMessageId] = useState<string>();
+	const [composerFocused, setComposerFocused] = useState(false);
+	const [actionMessage, setActionMessage] = useState<UniversalMessage>();
+	const [replying, setReplying] = useState<UniversalMessage>();
 	const timelineRef = useRef<HTMLElement>(null);
 	const inputRef = useRef<HTMLInputElement>(null);
+	const formRef = useRef<HTMLFormElement>(null);
 	const messageElements = useRef(new Map<string, HTMLElement>());
 	const initialLoad = useRef(true);
 	const followBottom = useRef(true);
@@ -205,6 +224,7 @@ export function ChatRoom({ conversation, onBack }: Props) {
 
 		if (followBottom.current) {
 			timeline.scrollTop = timeline.scrollHeight;
+			setAtBottom(true);
 		}
 
 		if (anchor.current) {
@@ -251,10 +271,12 @@ export function ChatRoom({ conversation, onBack }: Props) {
 		const distance = timeline.scrollHeight - timeline.scrollTop - timeline.clientHeight;
 		if (distance > 20) {
 			followBottom.current = false;
+			setAtBottom(false);
 			return;
 		}
 
 		followBottom.current = true;
+		setAtBottom(true);
 		reading.current = true;
 		void service.markRead(conversation).finally(() => {
 			reading.current = false;
@@ -279,9 +301,10 @@ export function ChatRoom({ conversation, onBack }: Props) {
 		if (!text) return;
 		try {
 			setError(undefined);
-			await service.sendText(conversation, text);
+			await service.sendText(conversation, text, replying);
 			setDraft('');
 			localStorage.removeItem(`draft:${conversation.id}`);
+			setReplying(undefined);
 			followBottom.current = true;
 			await service.setTyping(conversation, false);
 			await load();
@@ -304,32 +327,59 @@ export function ChatRoom({ conversation, onBack }: Props) {
 		const timeline = timelineRef.current;
 		if (timeline) timeline.scrollTop = timeline.scrollHeight;
 		followBottom.current = true;
-		setShowOptions(false);
+		setAtBottom(true);
 		inputRef.current?.focus({ preventScroll: true });
 	};
 
 	const clearDraft = () => {
 		setDraft('');
 		localStorage.removeItem(`draft:${conversation.id}`);
-		setShowOptions(false);
 		inputRef.current?.focus({ preventScroll: true });
 	};
 
+	const openMessageActions = () => {
+		const message = page?.messages.find((candidate) => candidate.id === selectedMessageId);
+		if (message) setActionMessage(message);
+	};
+
+	const replyToMessage = () => {
+		if (!actionMessage) return;
+		setReplying(actionMessage);
+		setActionMessage(undefined);
+		inputRef.current?.focus({ preventScroll: true });
+	};
+
+	const reactToMessage = (emoji: string) => {
+		if (!actionMessage) return;
+		void service.react(conversation, actionMessage, emoji)
+			.then(() => load())
+			.catch((reason) => setError(reason instanceof Error ? reason.message : 'Unable to react'));
+		setActionMessage(undefined);
+	};
+
 	useSoftkeys({
-		left: { label: 'Options', onPress: () => setShowOptions(true) },
-		center: { label: 'Type', onPress: () => inputRef.current?.focus() },
+		left: selectedMessageId ? { label: 'Message', onPress: openMessageActions } : undefined,
+		center: {
+			label: composerFocused ? 'Send' : selectedMessageId ? 'Open' : 'Type',
+			onPress: () => {
+				if (composerFocused) formRef.current?.requestSubmit();
+				else if (selectedMessageId) openMessageActions();
+				else inputRef.current?.focus();
+			},
+		},
 		right: { label: 'Back', onPress: onBack },
-	}, [onBack]);
+	}, [composerFocused, onBack, selectedMessageId, page]);
 
 	let currentDay = '';
 	let unreadShown = false;
 
-	if (showOptions) {
+	if (actionMessage) {
 		return (
-			<ChatOptions
-				onBack={() => setShowOptions(false)}
-				onJumpToLatest={jumpToLatest}
-				onClearDraft={clearDraft}
+			<MessageActions
+				message={actionMessage}
+				onBack={() => setActionMessage(undefined)}
+				onReply={replyToMessage}
+				onReact={reactToMessage}
 			/>
 		);
 	}
@@ -375,7 +425,11 @@ export function ChatRoom({ conversation, onBack }: Props) {
 							<MessageBubble
 								message={message}
 								conversation={conversation}
-								onFocus={() => { pendingFocus.current = message.id; }}
+								onFocus={() => {
+									pendingFocus.current = message.id;
+									setSelectedMessageId(message.id);
+									setComposerFocused(false);
+								}}
 								onArrow={(key) => scrollWithinMessage(message.id, key)}
 							/>
 						</div>
@@ -389,7 +443,23 @@ export function ChatRoom({ conversation, onBack }: Props) {
 					</div>
 				) : null}
 			</section>
-			<form class={styles.compose} onSubmit={send}>
+			<form class={styles.compose} ref={formRef} onSubmit={send}>
+				{replying && (
+					<div class={styles.replying}>
+						<span>Replying to {replying.direction === 'outgoing' ? 'your message' : replying.sender ?? 'message'}</span>
+						<button type="button" onClick={() => setReplying(undefined)}>×</button>
+					</div>
+				)}
+				{draft && (
+					<button class={styles.utility} type="button" onClick={clearDraft} aria-label="Clear draft">
+						×
+					</button>
+				)}
+				{!draft && !atBottom && (
+					<button class={styles.utility} type="button" onClick={jumpToLatest} aria-label="Jump to latest message">
+						↓
+					</button>
+				)}
 				<FocusInput
 					id="chat-compose"
 					inputRef={inputRef}
@@ -397,6 +467,10 @@ export function ChatRoom({ conversation, onBack }: Props) {
 					maxlength={4000}
 					autocomplete="off"
 					placeholder="Message"
+					onFocus={() => {
+						setComposerFocused(true);
+						setSelectedMessageId(undefined);
+					}}
 					onInput={(event) => updateDraft(event.currentTarget.value)}
 				/>
 				<button type="submit" aria-label="Send">➤</button>

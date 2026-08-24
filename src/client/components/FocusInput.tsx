@@ -8,11 +8,12 @@ type FocusInputProps = Props & {
 };
 
 export function FocusInput({ id, grid, onArrow, inputRef, ...props }: FocusInputProps) {
-	const ref = useFocusable({ id, grid, onArrow });
+	const { autoFocus, ...inputProps } = props;
+	const ref = useFocusable({ id, grid, onArrow, initial: Boolean(autoFocus) });
 
 	return (
 		<input
-			{...props}
+			{...inputProps}
 			ref={(element) => {
 				ref(element);
 				if (inputRef) inputRef.current = element;

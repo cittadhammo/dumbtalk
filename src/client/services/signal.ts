@@ -167,4 +167,17 @@ export const signalService: MessagingService = {
 		});
 		return toUniversalMessage(response.message);
 	},
+
+	async react(conversation, message, emoji): Promise<void> {
+		const [, target] = conversation.remoteId.split(/:(.*)/s);
+		await api('/api/message/reaction', {
+			method: 'POST',
+			body: JSON.stringify({
+				kind: conversation.kind,
+				target,
+				timestamp: message.sentAt,
+				emoji,
+			}),
+		});
+	},
 };
