@@ -192,8 +192,8 @@ export function ConversationList({ onOpen, onMenu, onArchived, archived = false 
 		<main>
 			<header class={styles.header}>
 				<span class={styles.brand}>
-					<img src="/sigdumb.png" alt="" />
-					{archived ? 'Archived' : 'SigDumb'}
+					<img src="/dumbtalk.png" alt="" />
+					{archived ? 'Archived' : 'DumbTalk'}
 				</span>
 				<span class={styles.serviceCount}>
 					{services.length} service{services.length === 1 ? '' : 's'}

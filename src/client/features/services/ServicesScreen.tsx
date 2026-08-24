@@ -25,7 +25,7 @@ export function ServicesScreen({ onBack }: Props) {
 			<header class={styles.header}>Services</header>
 			<section class={styles.content}>
 				<p class={styles.intro}>
-					Each messaging network is connected separately, then shares the same SigDumb conversation list.
+					Each messaging network is connected separately, then shares the same DumbTalk conversation list.
 				</p>
 				{statuses.map((status, index) => (
 					<FocusButton

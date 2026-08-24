@@ -41,8 +41,8 @@ function FoundationScreen({ status, retry }: { status?: Status; retry: () => voi
 		<main class={styles.screen}>
 			<header class={styles.header}>
 				<span class={styles.brandTitle}>
-					<img src="/sigdumb.png" alt="" />
-					SigDumb
+					<img src="/dumbtalk.png" alt="" />
+					DumbTalk
 				</span>
 				<span class={styles.badge}>Rebuild</span>
 			</header>
@@ -87,8 +87,8 @@ function StartupScreen() {
 
 	return (
 		<main class={`${styles.screen} ${styles.centered}`}>
-			<img class={styles.logo} src="/sigdumb.png" alt="" />
-			<p>Starting SigDumb…</p>
+			<img class={styles.logo} src="/dumbtalk.png" alt="" />
+			<p>Starting DumbTalk…</p>
 		</main>
 	);
 }
@@ -106,7 +106,7 @@ function ErrorScreen({ message, retry }: { message: string; retry: () => void })
 
 	return (
 		<main class={`${styles.screen} ${styles.centered}`}>
-			<img class={styles.logo} src="/sigdumb.png" alt="" />
+			<img class={styles.logo} src="/dumbtalk.png" alt="" />
 			<p class={styles.error}>{message}</p>
 			<FocusButton id="startup-retry" type="button" onClick={retry}>
 				Retry

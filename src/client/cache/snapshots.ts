@@ -12,6 +12,7 @@ type Snapshot<T> = {
 };
 
 function key(name: string) {
+	// This legacy prefix preserves conversation and message caches across the DumbTalk rename.
 	return `sigdumb:cache:v${CACHE_VERSION}:${name}`;
 }
 

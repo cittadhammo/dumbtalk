@@ -82,7 +82,7 @@ try {
 } catch {}
 
 function log(message, extra = "") {
-  console.log(`[cloudphone-signal] ${message}`, extra);
+  console.log(`[dumbtalk] ${message}`, extra);
 }
 
 signalUpdate = await prepareSignalCli({ dataDir: DATA_DIR, log });
@@ -302,7 +302,7 @@ async function applyEnvelopeState(payload) {
   const account = payload?.account || payload?.params?.account || payload?.params?.result?.account;
 
   // A linked Signal client mirrors its locally-read messages through sync messages.
-  // Use those timestamps as the canonical read boundary so SigDumb starts where the
+  // Use those timestamps as the canonical read boundary so DumbTalk starts where the
   // user last left off on another device.
   const syncedReads = envelope.syncMessage?.readMessages || envelope.syncMessage?.readMessage;
   if (syncedReads) {
@@ -584,7 +584,7 @@ async function api(req, res, url) {
     const input = await body(req);
     await rpc("finishLink", {
       deviceLinkUri: input.uri,
-      deviceName: process.env.DEVICE_NAME || "SigDumb",
+      deviceName: process.env.DEVICE_NAME || "DumbTalk",
     }, 180_000);
     const account = await getAccount();
     if (account) {

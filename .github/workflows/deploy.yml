@@ -1,4 +1,4 @@
-name: Test and deploy SigDumb
+name: Test and deploy DumbTalk
 
 on:
   push:
@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: sigdumb-production
+  group: dumbtalk-production
   cancel-in-progress: true
 
 jobs:

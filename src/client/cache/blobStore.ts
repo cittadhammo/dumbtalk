@@ -1,3 +1,4 @@
+// Keep the original namespace so existing installations retain cached media after the DumbTalk rename.
 const DATABASE_NAME = 'sigdumb-media-cache';
 const STORE_NAME = 'blobs';
 const memory = new Map<string, Blob>();

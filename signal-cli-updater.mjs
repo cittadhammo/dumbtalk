@@ -36,7 +36,7 @@ export async function prepareSignalCli({ dataDir, bundledBinary = "/usr/local/bi
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 20_000);
-    const response = await fetch(API, { headers: { accept: "application/vnd.github+json", "user-agent": "sigdumb" }, signal: controller.signal });
+    const response = await fetch(API, { headers: { accept: "application/vnd.github+json", "user-agent": "dumbtalk" }, signal: controller.signal });
     clearTimeout(timer);
     if (!response.ok) throw new Error(`release check returned ${response.status}`);
     const release = await response.json();
@@ -48,7 +48,7 @@ export async function prepareSignalCli({ dataDir, bundledBinary = "/usr/local/bi
     if (previous?.version === version && existsSync(previousBinary)) { result.update = "current"; return result; }
     if (!String(asset.digest || "").startsWith("sha256:")) throw new Error("release asset has no trusted SHA-256 digest");
     const archive = join(runtime, `${version}.tar.gz.partial`);
-    const download = await fetch(asset.browser_download_url, { headers: { "user-agent": "sigdumb" } });
+    const download = await fetch(asset.browser_download_url, { headers: { "user-agent": "dumbtalk" } });
     if (!download.ok || !download.body) throw new Error(`download returned ${download.status}`);
     const hash = createHash("sha256");
     await pipeline(Readable.fromWeb(download.body), new Transform({ transform(chunk, encoding, callback) { hash.update(chunk); callback(null, chunk); } }), createWriteStream(archive, { mode: 0o600 }));
