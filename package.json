@@ -5,9 +5,23 @@
   "type": "module",
   "scripts": {
     "start": "node server.mjs",
-    "test": "node --test"
+    "test": "node --test",
+    "build:client": "vite build",
+    "typecheck:client": "tsc -p tsconfig.client.json --noEmit",
+    "test:client": "vitest run"
   },
   "dependencies": {
+    "preact": "^10.29.8",
     "qrcode": "1.5.4"
+  },
+  "devDependencies": {
+    "@preact/preset-vite": "^2.10.6",
+    "@types/node": "^26.2.0",
+    "@types/qrcode": "^1.5.6",
+    "prettier": "^3.9.6",
+    "sass": "^1.103.1",
+    "typescript": "^5.9.3",
+    "vite": "^7.1.7",
+    "vitest": "^3.2.4"
   }
 }
