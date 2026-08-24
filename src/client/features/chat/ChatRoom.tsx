@@ -160,7 +160,6 @@ export function ChatRoom({ conversation, onBack }: Props) {
 	const [showOptions, setShowOptions] = useState(false);
 	const [viewer, setViewer] = useState<{ message: UniversalMessage; index: number }>();
 	const [editing, setEditing] = useState<UniversalMessage>();
-	const [editDraft, setEditDraft] = useState('');
 	const [expandedReactions, setExpandedReactions] = useState(false);
 	const [replying, setReplying] = useState<UniversalMessage>();
 	const timelineRef = useRef<HTMLElement>(null);
@@ -322,10 +321,12 @@ export function ChatRoom({ conversation, onBack }: Props) {
 		if (!text) return;
 		try {
 			setError(undefined);
-			await service.sendText(conversation, text, replying);
+			if (editing) await service.editMessage(conversation, editing, text);
+			else await service.sendText(conversation, text, replying);
 			setDraft('');
 			localStorage.removeItem(`draft:${conversation.id}`);
 			setReplying(undefined);
+			setEditing(undefined);
 			followBottom.current = true;
 			await service.setTyping(conversation, false);
 			await load();
@@ -418,20 +419,11 @@ export function ChatRoom({ conversation, onBack }: Props) {
 
 	const beginEdit = () => {
 		if (!actionMessage) return;
-		setEditDraft(actionMessage.text ?? '');
+		setDraft(actionMessage.text ?? '');
 		setEditing(actionMessage);
+		setActionMessage(undefined);
 	};
 
-	const saveEdit = () => {
-		if (!editing || !editDraft.trim()) return;
-		void service.editMessage(conversation, editing, editDraft.trim())
-			.then(() => {
-				setEditing(undefined);
-				setActionMessage(undefined);
-				void load();
-			})
-			.catch((reason) => setError(reason instanceof Error ? reason.message : 'Unable to edit message'));
-	};
 
 	const deleteMessage = () => {
 		if (!actionMessage) return;
@@ -467,16 +459,10 @@ export function ChatRoom({ conversation, onBack }: Props) {
 		window.requestAnimationFrame(() => focus('viewer-zoom'));
 	}, [focus, viewer?.message.id, viewer?.index]);
 
-	useEffect(() => {
-		if (!editing) return;
-		window.requestAnimationFrame(() => focus('message-edit-input'));
-	}, [editing?.id, focus]);
 
 	useSoftkeys({
 		left: actionMessage || showOptions ? undefined : selectedMessageId ? { label: 'Message', onPress: openMessageActions } : { label: 'Options', onPress: () => setShowOptions(true) },
-		center: editing
-			? { label: 'Save', onPress: saveEdit }
-			: viewer
+		center: viewer
 			? { label: 'Select', onPress: activate }
 			: actionMessage
 			? { label: 'Select', onPress: activate }
@@ -495,25 +481,14 @@ export function ChatRoom({ conversation, onBack }: Props) {
 					else inputRef.current?.focus();
 				},
 			},
-		right: { label: 'Back', onPress: editing ? () => setEditing(undefined) : viewer ? () => setViewer(undefined) : actionMessage ? closeMessageActions : showOptions ? () => setShowOptions(false) : onBack },
-	}, [actionMessage, composeControl, composerFocused, onBack, selectedMessageId, activate, showOptions, viewer, editing, editDraft]);
+		right: { label: 'Back', onPress: viewer ? () => setViewer(undefined) : actionMessage ? closeMessageActions : showOptions ? () => setShowOptions(false) : onBack },
+	}, [actionMessage, composeControl, composerFocused, onBack, selectedMessageId, activate, showOptions, viewer]);
 
 	let currentDay = '';
 	let unreadShown = false;
 	let previousMessage: UniversalMessage | undefined;
 
 	if (actionMessage) {
-		if (editing) {
-			return (
-				<main class={styles.actionScreen}>
-					<header class={styles.header}>Edit message</header>
-					<form class={styles.editForm} onSubmit={(event) => { event.preventDefault(); saveEdit(); }}>
-						<FocusInput id="message-edit-input" value={editDraft} maxlength={4000} onInput={(event) => setEditDraft(event.currentTarget.value)} />
-						<FocusButton id="message-edit-save" type="submit" class={styles.action} onClick={saveEdit}>Save edit</FocusButton>
-					</form>
-				</main>
-			);
-		}
 		return (
 			<MessageActions
 				message={actionMessage}
@@ -642,6 +617,7 @@ export function ChatRoom({ conversation, onBack }: Props) {
 				</FocusButton>
 			)}
 			<form class={styles.compose} ref={formRef} onSubmit={send}>
+				{editing && <div class={styles.replying}><span>Editing message</span><button type="button" onClick={() => { setEditing(undefined); setDraft(''); }}>×</button></div>}
 				{replying && (
 					<div class={styles.replying}>
 						<span>Replying to {replying.direction === 'outgoing' ? 'your message' : replying.sender ?? 'message'}</span>
