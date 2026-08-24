@@ -40,10 +40,21 @@ function preview(conversation: UniversalConversation) {
 	const sender = message?.direction === 'outgoing'
 		? 'You'
 		: conversation.kind === 'group'
-			? message?.sender ?? 'Someone'
+			? firstName(message?.sender) ?? 'Someone'
 			: conversation.title;
 
 	return <><strong>{sender}:</strong> {messageSummary(message)}</>;
+}
+
+function firstName(name?: string) {
+	return name?.trim().split(/\s+/)[0];
+}
+
+function PreviewReceipt({ message }: { message?: UniversalMessage }) {
+	if (message?.direction !== 'outgoing' || !message.receipt) return null;
+	const mark = message.receipt.state === 'sent' ? '✓' : '✓✓';
+	const className = `${styles.previewReceipt} ${styles[message.receipt.state] ?? ''}`;
+	return <span class={className}>{mark}</span>;
 }
 
 function Avatar({ conversation }: { conversation: UniversalConversation }) {
@@ -80,6 +91,7 @@ function ConversationRow({ conversation, onOpen, autoFocus }: { conversation: Un
 				</span>
 				<span class={styles.preview}>
 					{preview(conversation)}
+					<PreviewReceipt message={conversation.lastMessage} />
 				</span>
 			</span>
 		</FocusButton>

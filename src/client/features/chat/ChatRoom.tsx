@@ -38,12 +38,14 @@ function Receipt({ message }: { message: UniversalMessage }) {
 
 function MessageBubble({
 	message,
-	conversation,
+	showTime,
+	groupStart,
 	onFocus,
 	onArrow,
 }: {
 	message: UniversalMessage;
-	conversation: UniversalConversation;
+	showTime: boolean;
+	groupStart: boolean;
 	onFocus: () => void;
 	onArrow: (key: ArrowKey) => boolean;
 }) {
@@ -51,7 +53,7 @@ function MessageBubble({
 		return <p class={styles.system}>{message.text}</p>;
 	}
 
-	const className = `${styles.bubble} ${message.direction === 'outgoing' ? styles.outgoing : ''}`;
+	const className = `${styles.bubble} ${message.direction === 'outgoing' ? styles.outgoing : ''} ${groupStart ? styles.messageGroupStart : ''}`;
 	const attachment = attachmentLabel(message);
 	const reactions = message.reactions.map((reaction) => reaction.emoji).join(' ');
 
@@ -64,16 +66,15 @@ function MessageBubble({
 			onArrow={onArrow}
 			onClick={() => undefined}
 		>
-			{conversation.kind === 'group' && message.direction === 'incoming' && (
-				<span class={styles.sender}>{message.sender}</span>
-			)}
 			{attachment && <span class={styles.attachment}>{attachment}</span>}
 			{message.text && <span>{message.text}</span>}
 			{reactions && <span class={styles.reactions}>{reactions}</span>}
-			<time class={styles.time}>
-				{new Date(message.sentAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-				<Receipt message={message} />
-			</time>
+			{showTime && (
+				<time class={styles.time}>
+					{new Date(message.sentAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+					<Receipt message={message} />
+				</time>
+			)}
 		</FocusButton>
 	);
 }
@@ -89,8 +90,12 @@ function MessageActions({
 	onReply: () => void;
 	onReact: (emoji: string) => void;
 }) {
-	const { activate } = useFocusManager();
+	const { activate, focus } = useFocusManager();
 	const reactions = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
+
+	useEffect(() => {
+		focus('message-action-reply');
+	}, [focus]);
 
 	useSoftkeys({
 		center: { label: 'Select', onPress: activate },
@@ -167,26 +172,31 @@ export function ChatRoom({ conversation, onBack }: Props) {
 		if (visible) anchor.current = { id: visible[0], top: visible[1].getBoundingClientRect().top - top };
 	};
 
-	const load = async (before?: number) => {
+	const load = async (before?: number): Promise<MessagePage | undefined> => {
 		try {
 			setError(undefined);
-			if (!initialLoad.current && !followBottom.current) captureAnchor();
+			if (before) captureAnchor();
 			const next = await service.listMessages(conversation, { before });
 			setPage((previous) => {
-				if (!previous || !before) {
+				if (!previous) {
 					writeMessagePage(conversation.id, next);
 					return next;
 				}
+
 				const seen = new Set(next.messages.map((message) => message.id));
 				const merged = {
 					...next,
-					messages: [...next.messages, ...previous.messages.filter((message) => !seen.has(message.id))],
+					messages: [...next.messages, ...previous.messages.filter((message) => !seen.has(message.id))]
+						.sort((first, second) => first.sentAt - second.sentAt),
+					hasMore: before ? next.hasMore : previous.hasMore || next.hasMore,
 				};
 				writeMessagePage(conversation.id, merged);
 				return merged;
 			});
+			return next;
 		} catch (reason) {
 			setError(reason instanceof Error ? reason.message : 'Unable to load messages');
+			return undefined;
 		}
 	};
 
@@ -315,13 +325,13 @@ export function ChatRoom({ conversation, onBack }: Props) {
 	};
 
 	const loadOlder = () => {
-		if (!page?.hasMore) {
-			setOlderNotice('No older cached messages.');
-			return;
-		}
+		const first = page?.messages[0];
+		if (!first) return;
 
-		const first = page.messages[0];
-		if (first) void load(first.sentAt);
+		setOlderNotice(undefined);
+		void load(first.sentAt).then((next) => {
+			if (next && next.messages.length === 0) setOlderNotice('No older cached messages.');
+		});
 	};
 
 	const jumpToLatest = () => {
@@ -336,6 +346,12 @@ export function ChatRoom({ conversation, onBack }: Props) {
 		setDraft('');
 		localStorage.removeItem(`draft:${conversation.id}`);
 		inputRef.current?.focus({ preventScroll: true });
+	};
+
+	const focusJumpToLatest = () => {
+		if (atBottom) return false;
+		focus('chat-jump-latest');
+		return true;
 	};
 
 	const focusLastMessage = () => {
@@ -368,19 +384,20 @@ export function ChatRoom({ conversation, onBack }: Props) {
 	useSoftkeys({
 		left: selectedMessageId ? { label: 'Message', onPress: openMessageActions } : undefined,
 		center: {
-			label: composeControl === 'clear' ? 'Clear' : composeControl === 'latest' ? 'Latest' : composerFocused ? 'Send' : selectedMessageId ? 'Open' : 'Type',
+			label: composeControl === 'clear' ? 'Clear' : composeControl === 'latest' ? 'Latest' : composerFocused ? 'Type' : selectedMessageId ? 'Open' : 'Type',
 			onPress: () => {
 				if (composeControl) activate();
-				else if (composerFocused) formRef.current?.requestSubmit();
+				else if (composerFocused) inputRef.current?.focus();
 				else if (selectedMessageId) openMessageActions();
 				else inputRef.current?.focus();
 			},
 		},
 		right: { label: 'Back', onPress: onBack },
-	}, [composeControl, composerFocused, onBack, selectedMessageId, page]);
+	}, [composeControl, composerFocused, onBack, selectedMessageId]);
 
 	let currentDay = '';
 	let unreadShown = false;
+	let previousMessage: UniversalMessage | undefined;
 
 	if (actionMessage) {
 		return (
@@ -400,6 +417,17 @@ export function ChatRoom({ conversation, onBack }: Props) {
 				<span class={styles.service}>{conversation.serviceId}</span>
 			</header>
 			<section class={styles.timeline} ref={timelineRef} onScroll={markReadAtBottom}>
+				{!atBottom && (
+					<FocusButton
+						id="chat-jump-latest"
+						class={styles.floatingLatest}
+						type="button"
+						onClick={jumpToLatest}
+						aria-label="Jump to latest message"
+					>
+						↓
+					</FocusButton>
+				)}
 				{page && (
 					<FocusButton
 						id="load-older-messages"
@@ -419,6 +447,14 @@ export function ChatRoom({ conversation, onBack }: Props) {
 					currentDay = day;
 					const showUnread = !unreadShown && message.direction === 'incoming' && message.sentAt > page.readThrough;
 					if (showUnread) unreadShown = true;
+					const sameIncomingSender = previousMessage?.direction === 'incoming'
+						&& message.direction === 'incoming'
+						&& previousMessage.sender === message.sender;
+					const showSender = conversation.kind === 'group' && message.direction === 'incoming' && !sameIncomingSender;
+					const previousMinute = previousMessage ? Math.floor(previousMessage.sentAt / 60_000) : undefined;
+					const showTime = previousMinute !== Math.floor(message.sentAt / 60_000);
+					const groupStart = !sameIncomingSender && Boolean(previousMessage);
+					previousMessage = message;
 
 					return (
 						<div ref={(element) => {
@@ -431,16 +467,22 @@ export function ChatRoom({ conversation, onBack }: Props) {
 								</div>
 							)}
 							{showUnread && <div class={styles.unreadMarker}>Unread messages</div>}
+							{showSender && <span class={styles.sender}>{message.sender}</span>}
 							<MessageBubble
 								message={message}
-								conversation={conversation}
+								showTime={showTime}
+								groupStart={groupStart}
 								onFocus={() => {
 									pendingFocus.current = message.id;
 									setSelectedMessageId(message.id);
 									setComposerFocused(false);
 									setComposeControl(undefined);
 								}}
-								onArrow={(key) => scrollWithinMessage(message.id, key)}
+								onArrow={(key) => {
+									if (key === 'ArrowLeft') return focusJumpToLatest();
+									if (key === 'ArrowRight') return true;
+									return scrollWithinMessage(message.id, key);
+								}}
 							/>
 						</div>
 					);
@@ -476,22 +518,6 @@ export function ChatRoom({ conversation, onBack }: Props) {
 						×
 					</FocusButton>
 				)}
-				{!draft && !atBottom && (
-					<FocusButton
-						id="chat-jump-latest"
-						class={styles.utility}
-						type="button"
-						onFocus={() => {
-							setComposeControl('latest');
-							setComposerFocused(false);
-							setSelectedMessageId(undefined);
-						}}
-						onClick={jumpToLatest}
-						aria-label="Jump to latest message"
-					>
-						↓
-					</FocusButton>
-				)}
 				<FocusInput
 					id="chat-compose"
 					inputRef={inputRef}
@@ -504,7 +530,18 @@ export function ChatRoom({ conversation, onBack }: Props) {
 						setSelectedMessageId(undefined);
 						setComposeControl(undefined);
 					}}
-					onArrow={(key) => key === 'ArrowUp' ? focusLastMessage() : false}
+					onArrow={(key) => {
+						if (key === 'ArrowUp') return focusLastMessage();
+						if (key === 'ArrowLeft' && draft) {
+							focus('chat-clear-draft');
+							return true;
+						}
+						if (key === 'ArrowRight') {
+							focus('chat-send');
+							return true;
+						}
+						return key === 'ArrowLeft';
+					}}
 					onKeyDown={(event) => {
 						if (event.key !== 'Enter') return;
 						event.preventDefault();
@@ -512,7 +549,26 @@ export function ChatRoom({ conversation, onBack }: Props) {
 					}}
 					onInput={(event) => updateDraft(event.currentTarget.value)}
 				/>
-				<button type="submit" aria-label="Send">➤</button>
+				<FocusButton
+					id="chat-send"
+					type="submit"
+					aria-label="Send"
+					onFocus={() => {
+						setComposerFocused(false);
+						setComposeControl(undefined);
+						setSelectedMessageId(undefined);
+					}}
+					onArrow={(key) => {
+						if (key === 'ArrowLeft') {
+							inputRef.current?.focus({ preventScroll: true });
+							return true;
+						}
+						if (key === 'ArrowUp') return focusLastMessage();
+						return key === 'ArrowRight';
+					}}
+				>
+					➤
+				</FocusButton>
 			</form>
 		</main>
 	);

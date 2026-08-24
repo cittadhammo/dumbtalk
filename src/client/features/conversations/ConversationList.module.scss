@@ -129,6 +129,23 @@
 	color: #cbd8d2;
 }
 
+.previewReceipt {
+	float: right;
+	margin-left: 4px;
+	color: #d9e5ff;
+	font-size: 10px;
+	font-weight: 700;
+}
+
+.delivered,
+.read {
+	letter-spacing: -2px;
+}
+
+.read {
+	color: #ffffff;
+}
+
 .typing {
 	color: #65c991;
 	font-style: italic;
