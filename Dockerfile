@@ -30,10 +30,14 @@ RUN apt-get update \
     && wacli_archive="wacli_${WACLI_VERSION}_linux_${wacli_arch}.tar.gz" \
     && curl -fsSL "https://github.com/openclaw/wacli/releases/download/v${WACLI_VERSION}/${wacli_archive}" -o "/tmp/${wacli_archive}" \
     && echo "${wacli_sha256}  /tmp/${wacli_archive}" | sha256sum -c - \
-    && tar -xzf "/tmp/${wacli_archive}" -C /usr/local/bin wacli \
-    && chmod 0755 /usr/local/bin/wacli \
+    && mkdir -p /tmp/wacli-release \
+    && tar -xzf "/tmp/${wacli_archive}" -C /tmp/wacli-release \
+    && wacli_binary="$(find /tmp/wacli-release -type f -name wacli -print -quit)" \
+    && test -n "$wacli_binary" \
+    && install -m 0755 "$wacli_binary" /usr/local/bin/wacli \
     && rm -f /tmp/signal-cli.tar.gz \
     && rm -f "/tmp/${wacli_archive}" \
+    && rm -rf /tmp/wacli-release \
     && apt-get purge -y --auto-remove curl \
     && rm -rf /var/lib/apt/lists/*
 
