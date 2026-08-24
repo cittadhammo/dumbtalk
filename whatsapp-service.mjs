@@ -2,7 +2,7 @@ import { createReadStream, existsSync } from "node:fs";
 import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { basename, extname, join, resolve } from "node:path";
-import { randomUUID } from "node:crypto";
+import { createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import QRCode from "qrcode";
 
 const WACLI = "/usr/local/bin/wacli";
@@ -67,6 +67,10 @@ function errorText(stderr, fallback = "WhatsApp request failed") {
   }
 }
 
+function webhookJid(value) {
+  return typeof value === "string" ? value : value?.User && value?.Server ? `${value.User}@${value.Server}` : "";
+}
+
 export class WhatsAppService {
   constructor({ dataDir, log }) {
     this.dataDir = join(dataDir, "whatsapp");
@@ -81,6 +85,9 @@ export class WhatsAppService {
     this.state = { favourites: [], settings: { ...DEFAULT_SETTINGS } };
     this.dialogCache = { at: 0, values: [] };
     this.messageCache = new Map();
+    this.webhookSecret = randomBytes(32).toString("hex");
+    this.receipts = new Map();
+    this.typing = new Map();
   }
 
   get sessionPath() {
@@ -220,7 +227,7 @@ export class WhatsAppService {
 
   startSync() {
     if (this.syncProcess || !this.isLinked()) return;
-    const process = spawn(WACLI, ["--store", this.dataDir, "--events", "sync", "--follow", "--download-media", "--presence-mode", "quiet", "--max-messages", process.env.WACLI_SYNC_MAX_MESSAGES || "50000", "--max-db-size", process.env.WACLI_SYNC_MAX_DB_SIZE || "1GB"], {
+    const process = spawn(WACLI, ["--store", this.dataDir, "--events", "sync", "--follow", "--download-media", "--presence-mode", "quiet", "--webhook", "http://127.0.0.1:8080/internal/wacli/webhook", "--webhook-secret", this.webhookSecret, "--webhook-allow-private", "--webhook-events", "message,receipt,chat_presence", "--max-messages", process.env.WACLI_SYNC_MAX_MESSAGES || "50000", "--max-db-size", process.env.WACLI_SYNC_MAX_DB_SIZE || "1GB"], {
       env: { ...process.env, WACLI_STORE_DIR: this.dataDir },
       stdio: ["ignore", "ignore", "pipe"],
     });
@@ -291,6 +298,7 @@ export class WhatsAppService {
       }] : [],
       reactions: [],
       poll: undefined,
+      status: this.receipts.get(`${chatJid}:${id}`)?.state || "sent",
     };
     this.messageCache.set(`${chatJid}:${id}`, { ...result, chatName });
     return result;
@@ -365,7 +373,8 @@ export class WhatsAppService {
         closed: false,
       };
     }
-    return { messages, hasMore: rows.length === 60, readThrough: 0, typing: [] };
+    const typing = this.typing.get(jid);
+    return { messages, hasMore: rows.length === 60, readThrough: 0, typing: typing?.until > Date.now() ? typing.names : [] };
   }
 
   cachedMessage(jid, id) {
@@ -537,6 +546,30 @@ export class WhatsAppService {
   json(res, status, body) {
     res.writeHead(status, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" });
     res.end(JSON.stringify(body));
+  }
+
+  async handleWebhook(req, res) {
+    const chunks = [];
+    for await (const chunk of req) chunks.push(chunk);
+    const raw = Buffer.concat(chunks);
+    const expected = createHmac("sha256", this.webhookSecret).update(raw).digest("hex");
+    const provided = String(req.headers["x-wacli-signature"] || "");
+    if (provided.length !== expected.length || !timingSafeEqual(Buffer.from(provided), Buffer.from(expected))) {
+      return this.json(res, 401, { error: "Unauthorized" });
+    }
+    const event = JSON.parse(raw.toString("utf8"));
+    if (event.EventType === "chat_presence" && event.State === "composing") {
+      const chat = webhookJid(event.Chat);
+      const sender = webhookJid(event.Sender) || "Someone";
+      this.typing.set(chat, { names: [sender], until: Date.now() + 8_000 });
+    }
+    if (event.EventType === "receipt") {
+      const chat = webhookJid(event.Chat);
+      const state = event.Type === "read" || event.Type === "played" ? "read" : "delivered";
+      for (const id of asArray(event.MessageIDs)) this.receipts.set(`${chat}:${id}`, { state, at: timestamp(event.Timestamp) });
+    }
+    this.dialogCache.at = 0;
+    return this.json(res, 204, {});
   }
 
   async handle(req, res, url, { body, json }) {

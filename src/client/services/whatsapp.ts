@@ -41,6 +41,7 @@ type WhatsAppMessage = {
 	deleted?: boolean;
 	forwardedFrom?: string;
 	attachments?: WhatsAppAttachment[];
+	status?: 'sent' | 'delivered' | 'read';
 	reactions?: { emoji: string; author: string; own: boolean }[];
 	poll?: {
 		question: string;
@@ -88,7 +89,7 @@ function messageFromWhatsApp(message: WhatsAppMessage): UniversalMessage {
 			author: reaction.author,
 			isOwn: reaction.own,
 		})),
-		receipt: message.direction === 'out' ? { state: 'sent' } : undefined,
+		receipt: message.direction === 'out' ? { state: message.status ?? 'sent' } : undefined,
 		edited: message.edited,
 		deleted: message.deleted,
 		forwardedFrom: message.forwardedFrom,
