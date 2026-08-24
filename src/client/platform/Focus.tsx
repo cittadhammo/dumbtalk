@@ -22,6 +22,14 @@ type ContextValue = {
 	activate: () => void;
 };
 
+function documentOrder(first: Item, second: Item) {
+	if (first.element === second.element) return 0;
+	const position = first.element.compareDocumentPosition(second.element);
+	if (position & Node.DOCUMENT_POSITION_FOLLOWING) return -1;
+	if (position & Node.DOCUMENT_POSITION_PRECEDING) return 1;
+	return 0;
+}
+
 const FocusContext = createContext<ContextValue | null>(null);
 
 export function FocusProvider({ children }: { children: ComponentChildren }) {
@@ -76,7 +84,9 @@ export function FocusProvider({ children }: { children: ComponentChildren }) {
 				return;
 			}
 
-			const all = [...items.current.values()].filter((item) => item.element.offsetParent !== null);
+			const all = [...items.current.values()]
+				.filter((item) => item.element.isConnected && item.element.offsetParent !== null)
+				.sort(documentOrder);
 			if (!all.length) return;
 
 			const index = active ? all.indexOf(active) : 0;

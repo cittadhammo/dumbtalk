@@ -25,6 +25,8 @@ test('Preact client uses component state instead of DOM mutation', async () => {
 	assert.match(source, /function MessageBubble/);
 	assert.match(source, /function MessageActions/);
 	assert.match(source, /function ChatOptions/);
+	assert.match(source, /compareDocumentPosition/);
+	assert.match(source, /sort\(documentOrder\)/);
 });
 
 test('universal messaging contract covers rich messages and service management', async () => {
