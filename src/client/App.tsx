@@ -22,61 +22,6 @@ type Status = {
 	linked: boolean;
 };
 
-function FoundationScreen({ status, retry }: { status?: Status; retry: () => void }) {
-	const { activate, focus } = useFocusManager();
-	const [selected, setSelected] = useState('Use the D-pad to choose a foundation check.');
-
-	useSoftkeys(
-		{
-			left: { label: 'Focus', onPress: () => focus('foundation-0') },
-			center: { label: 'Select', onPress: activate },
-			right: { label: 'Exit', onPress: () => window.close() },
-		},
-		[],
-	);
-
-	const checks = ['Soft-key actions', 'D-pad focus', 'QVGA layout'];
-
-	return (
-		<main class={styles.screen}>
-			<header class={styles.header}>
-				<span class={styles.brandTitle}>
-					<img src="/dumbtalk.png" alt="" />
-					DumbTalk
-				</span>
-				<span class={styles.badge}>Rebuild</span>
-			</header>
-			<section class={styles.card}>
-				<p class={styles.eyebrow}>Milestones 1–2</p>
-				<h1>CloudPhone foundation</h1>
-				<p>
-					{status?.linked
-						? 'Your existing Signal link and data are intact. The rebuilt conversation screens follow next.'
-						: 'Checking the existing Signal service…'}
-				</p>
-				<div class={styles.demo} aria-label="D-pad focus demonstration">
-					{checks.map((label, index) => (
-						<FocusButton
-							id={`foundation-${index}`}
-							grid="foundation"
-							type="button"
-							class={styles.menuButton}
-							onClick={() => setSelected(`${label} checked.`)}
-						>
-							<span>{label}</span>
-							<span>›</span>
-						</FocusButton>
-					))}
-				</div>
-				<p>{selected}</p>
-				<FocusButton id="foundation-retry" type="button" class={styles.primary} onClick={retry}>
-					Refresh status
-				</FocusButton>
-			</section>
-		</main>
-	);
-}
-
 function StartupScreen() {
 	useSoftkeys(
 		{
@@ -123,13 +68,28 @@ type Screen =
 	| { name: 'search' }
 	| { name: 'settings' }
 	| { name: 'services' }
+	| { name: 'onboarding' }
 	| { name: 'chat'; conversation: UniversalConversation; result?: UniversalSearchResult };
 
 function UnifiedApp() {
 	const [screen, setScreen] = useState<Screen>({ name: 'conversations', archived: false });
 
 	if (screen.name === 'services') {
-		return <ServicesScreen onBack={() => setScreen({ name: 'conversations', archived: false })} />;
+		return (
+			<ServicesScreen
+				onBack={() => setScreen({ name: 'conversations', archived: false })}
+				onDisconnected={() => setScreen({ name: 'onboarding' })}
+			/>
+		);
+	}
+
+	if (screen.name === 'onboarding') {
+		return (
+			<ServicesScreen
+				onboarding
+				onConnected={() => setScreen({ name: 'conversations', archived: false })}
+			/>
+		);
 	}
 
 	if (screen.name === 'menu') {
@@ -213,17 +173,26 @@ function Boot() {
 	}, []);
 
 	useEffect(load, [load]);
+	useEffect(() => {
+		if (!status || status.signalReady) return;
+		const timer = window.setTimeout(load, 2_000);
+		return () => window.clearTimeout(timer);
+	}, [load, status]);
 
 	if (error) {
 		return <ErrorScreen message={error} retry={load} />;
 	}
 
-	if (!status) {
+	if (!status || !status.signalReady) {
 		return <StartupScreen />;
 	}
 
-	if (!status.signalReady || !status.linked) {
-		return <FoundationScreen status={status} retry={load} />;
+	if (!status.linked) {
+		return (
+			<MessagingServiceProvider>
+				<ServicesScreen onboarding onConnected={load} />
+			</MessagingServiceProvider>
+		);
 	}
 
 	return (

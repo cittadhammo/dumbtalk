@@ -217,6 +217,39 @@ export const signalService: MessagingService = {
 		};
 	},
 
+	async beginSetup() {
+		const response = await api<{ uri: string; qr: string }>('/api/link/start', {
+			method: 'POST',
+		});
+		return {
+			kind: 'qr' as const,
+			token: response.uri,
+			title: 'Link Signal',
+			instructions: 'Signal → Settings → Linked devices → Link new device',
+			image: response.qr,
+		};
+	},
+
+	async advanceSetup(step) {
+		if (step.kind !== 'qr') throw new Error('Signal expected a QR setup step');
+		await api<{ linked: boolean }>('/api/link/finish', {
+			method: 'POST',
+			body: JSON.stringify({ uri: step.token }),
+		});
+		return {
+			kind: 'complete' as const,
+			title: 'Signal linked',
+			instructions: 'Contacts and new messages will begin syncing shortly.',
+		};
+	},
+
+	async disconnect() {
+		await api<{ disconnected: boolean }>('/api/services/signal/disconnect', {
+			method: 'POST',
+			body: JSON.stringify({ confirm: 'disconnect-signal' }),
+		});
+	},
+
 	async listConversations({ archived }): Promise<ConversationPage> {
 		const response = await api<SignalConversationResponse>(
 			`/api/conversations${archived ? '?archived=1' : ''}`,

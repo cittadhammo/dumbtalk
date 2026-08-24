@@ -8,6 +8,29 @@ export type ServiceStatus = {
 	accountLabel?: string;
 };
 
+export type ServiceSetupStep =
+	| {
+			kind: 'qr';
+			token: string;
+			title: string;
+			instructions: string;
+			image: string;
+	  }
+	| {
+			kind: 'input';
+			token: string;
+			title: string;
+			instructions: string;
+			field: 'phone' | 'code' | 'password';
+			placeholder?: string;
+			hint?: string;
+	  }
+	| {
+			kind: 'complete';
+			title: string;
+			instructions: string;
+	  };
+
 export type AttachmentKind = 'image' | 'video' | 'audio' | 'file';
 
 export type UniversalAttachment = {
@@ -166,6 +189,9 @@ export type MessagingService = {
 	id: ServiceId;
 	label: string;
 	getStatus: () => Promise<ServiceStatus>;
+	beginSetup: () => Promise<ServiceSetupStep>;
+	advanceSetup: (step: ServiceSetupStep, value?: string) => Promise<ServiceSetupStep>;
+	disconnect: () => Promise<void>;
 	listConversations: (options: { archived: boolean }) => Promise<ConversationPage>;
 	listMessages: (conversation: UniversalConversation, options?: { before?: number }) => Promise<MessagePage>;
 	markRead: (conversation: UniversalConversation) => Promise<void>;

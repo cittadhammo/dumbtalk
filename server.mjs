@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 import { createReadStream, existsSync } from "node:fs";
-import { mkdir, readFile, readdir, rename, stat, unlink, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rename, rm, stat, unlink, writeFile } from "node:fs/promises";
 import { basename, extname, join, normalize } from "node:path";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { spawn } from "node:child_process";
@@ -592,6 +592,34 @@ async function api(req, res, url) {
       syncRequestedAccounts.add(account);
     }
     return json(res, 200, { linked: true });
+  }
+  if (url.pathname === "/api/services/signal/disconnect" && req.method === "POST") {
+    const input = await body(req);
+    if (input.confirm !== "disconnect-signal") return json(res, 400, { error: "Confirmation required" });
+    const account = await getAccount();
+    if (!account) return json(res, 200, { disconnected: true });
+
+    // This removes only DumbTalk's linked-device keys. It does not unregister or
+    // delete the user's primary Signal account.
+    await rpc("deleteLocalAccountData", { account, ignoreRegistered: true }, 120_000);
+    messages = [];
+    appState = {
+      ...appState,
+      archived: [],
+      favorites: [],
+      muted: [],
+      readThrough: {},
+      expirations: {},
+    };
+    syncRequestedAccounts.delete(account);
+    conversationAliases.clear();
+    typingState.clear();
+    identityNames.clear();
+    viewOnceTokens.clear();
+    await rm(MEDIA_DIR, { recursive: true, force: true });
+    await mkdir(MEDIA_DIR, { recursive: true });
+    await Promise.all([persistMessages(), persistState()]);
+    return json(res, 200, { disconnected: true });
   }
   if (url.pathname === "/api/conversations" && req.method === "GET") {
     const account = await getAccount();

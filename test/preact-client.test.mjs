@@ -40,6 +40,8 @@ test('Preact client uses component state instead of DOM mutation', async () => {
 	assert.match(source, /navigator\.hasFeature\('ImageUpload'\)/);
 	assert.match(source, /styles\.zoomVertical/);
 	assert.match(source, /message\.forwardedFrom/);
+	assert.match(source, /function SetupServiceScreen/);
+	assert.match(source, /function DisconnectServiceScreen/);
 });
 
 test('universal messaging contract covers rich messages and service management', async () => {
@@ -93,4 +95,16 @@ test('universal messaging contract covers rich messages and service management',
 
 	assert.match(server, /rpc\("listStickerPacks"/);
 	assert.match(server, /forwardedFrom: source\.forwardedFrom/);
+	for (const lifecycle of ['beginSetup', 'advanceSetup', 'disconnect']) {
+		assert.match(contract, new RegExp(`\\b${lifecycle}\\b`));
+	}
+	for (const setupField of ['phone', 'code', 'password']) {
+		assert.match(contract, new RegExp(`'${setupField}'`));
+	}
+	assert.match(signal, /\/api\/link\/start/);
+	assert.match(signal, /\/api\/link\/finish/);
+	assert.match(signal, /\/api\/services\/signal\/disconnect/);
+	assert.match(server, /rpc\("deleteLocalAccountData", \{ account, ignoreRegistered: true \}/);
+	assert.doesNotMatch(server, /rpc\("unregister"/);
+	assert.match(server, /input\.confirm !== "disconnect-signal"/);
 });
