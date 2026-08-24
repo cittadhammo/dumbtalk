@@ -31,6 +31,7 @@ export function ChatRoom({ conversation, onBack, usage }: Props) {
 	const focusedTimestamp = useRef<number>();
 	const followBottom = useRef(true);
 	const initial = useRef(true);
+	const readSent = useRef(false);
 
 	const load = async () => {
 		const next = await api<MessagesPayload>(`/api/messages/${encodeURIComponent(conversation.id)}`);
@@ -68,7 +69,15 @@ export function ChatRoom({ conversation, onBack, usage }: Props) {
 
 	if (!payload) return <Shell title={conversation.name} usage={usage}><p class="empty">Loading messages…</p></Shell>;
 	return <Shell title={conversation.name} usage={usage} className="room-screen">
-		<main class="messages" ref={panel} onScroll={() => { if (panel.current && panel.current.scrollHeight - panel.current.scrollTop - panel.current.clientHeight > 20) followBottom.current = false; }}>
+		<main class="messages" ref={panel} onScroll={() => {
+			if (!panel.current) return;
+			const distance = panel.current.scrollHeight - panel.current.scrollTop - panel.current.clientHeight;
+			if (distance > 20) followBottom.current = false;
+			else if (!readSent.current) {
+				readSent.current = true;
+				void api('/api/read', { method: 'POST', body: JSON.stringify({ conversationId: conversation.id }) });
+			}
+		}}>
 			{payload.messages.map((message) => <MessageBubble key={message.id} message={message} onImage={(selected, index) => setViewer({ message: selected, index })} />)}
 		</main>
 		<form class="compose" onSubmit={send}><input class="focusable" value={draft} onInput={(event) => setDraft((event.currentTarget as HTMLInputElement).value)} placeholder="Message" /><button class="focusable" aria-label="Send">➤</button></form>
