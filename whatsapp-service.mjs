@@ -78,6 +78,7 @@ export class WhatsAppService {
     this.statePath = join(this.dataDir, "state.json");
     this.log = log;
     this.authProcess = null;
+    this.authMethod = null;
     this.syncProcess = null;
     this.qr = null;
     this.pairCode = null;
@@ -176,15 +177,18 @@ export class WhatsAppService {
 
   async beginSetup(phone = "") {
     if (this.isLinked()) return this.statusPayload();
-    if (this.authProcess) return this.statusPayload();
-    this.lastError = null;
-    this.qr = null;
-    this.pairCode = null;
-
     const normalizedPhone = String(phone).replace(/[\s().-]/g, "");
     if (normalizedPhone && !/^\+?[1-9]\d{6,14}$/.test(normalizedPhone)) {
       throw new Error("Enter your full phone number, including country code");
     }
+    const authMethod = normalizedPhone ? "phone" : "qr";
+    if (this.authProcess && this.authMethod === authMethod) return this.statusPayload();
+    if (this.authProcess) await this.stopAuth();
+
+    this.lastError = null;
+    this.qr = null;
+    this.pairCode = null;
+    this.authMethod = authMethod;
     const authArgs = ["--store", this.dataDir, "--events", "auth", "--download-media"];
     if (normalizedPhone) authArgs.push("--phone", normalizedPhone);
     else authArgs.push("--qr-format", "text");
@@ -213,7 +217,7 @@ export class WhatsAppService {
           code = event?.data?.code || event?.code || "";
         } catch {}
         if (!code || code === this.qr?.url) continue;
-        this.qr = { url: code, image: await QRCode.toDataURL(code, { margin: 1, width: 240 }) };
+        this.qr = { url: code, image: await QRCode.toDataURL(code, { errorCorrectionLevel: "L", margin: 1, width: 512 }) };
       }
     };
     child.stdout.on("data", chunk => void consume(chunk));
@@ -225,6 +229,7 @@ export class WhatsAppService {
     child.on("exit", async code => {
       if (this.authProcess !== child) return;
       this.authProcess = null;
+      this.authMethod = null;
       await this.refreshStatus();
       if (code && !this.isLinked()) this.lastError = "WhatsApp linking did not complete";
       if (this.isLinked()) this.startSync();
@@ -232,6 +237,18 @@ export class WhatsAppService {
     for (let attempt = 0; attempt < 60 && !this.qr && !this.pairCode && this.authProcess === child; attempt++) await delay(100);
     if (!this.qr && !this.pairCode) throw new Error(this.lastError || "WhatsApp did not provide a linking code");
     return this.statusPayload();
+  }
+
+  async stopAuth() {
+    const child = this.authProcess;
+    if (!child) return;
+    this.authProcess = null;
+    this.authMethod = null;
+    this.qr = null;
+    this.pairCode = null;
+    const exited = new Promise(resolve => child.once("exit", resolve));
+    child.kill("SIGTERM");
+    await Promise.race([exited, delay(2_000)]);
   }
 
   async pollSetup() {
@@ -265,6 +282,7 @@ export class WhatsAppService {
     this.authProcess?.kill("SIGTERM");
     this.syncProcess?.kill("SIGTERM");
     this.authProcess = null;
+    this.authMethod = null;
     this.syncProcess = null;
     if (this.isLinked()) await this.run(["auth", "logout"]).catch(error => this.log("wacli logout", error.message));
     await rm(this.dataDir, { recursive: true, force: true });
