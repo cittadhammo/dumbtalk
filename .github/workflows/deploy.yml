@@ -31,18 +31,15 @@ jobs:
 
       - name: Test
         run: |
-          npm install --ignore-scripts
+          npm ci --ignore-scripts
           node --check server.mjs
-          node --check public/app.js
           npm test
 
-      - name: Build and stage Preact frontend for rebuild branches
-        if: startsWith(github.ref, 'refs/heads/refactor/preact-client-')
+      - name: Build Preact frontend
         run: |
           set -euo pipefail
           npm run typecheck:client
           npm run build:client
-          cp -a public-next/. public/
 
       - name: Join tailnet
         uses: tailscale/github-action@v4

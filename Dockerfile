@@ -1,3 +1,12 @@
+FROM node:22-bookworm-slim AS client-build
+
+WORKDIR /build
+COPY package*.json ./
+RUN npm ci --ignore-scripts
+COPY tsconfig.client.json vite.config.ts ./
+COPY src/client ./src/client
+RUN npm run typecheck:client && npm run build:client
+
 FROM node:22-bookworm-slim
 
 ARG SIGNAL_CLI_VERSION=0.14.7
@@ -18,7 +27,7 @@ COPY package*.json ./
 RUN npm install --omit=dev && npm cache clean --force
 COPY server.mjs ./
 COPY signal-cli-updater.mjs ./
-COPY public ./public
+COPY --from=client-build /build/public-next ./public
 COPY docker-entrypoint.sh /usr/local/bin/cloudphone-signal-entrypoint
 
 RUN mkdir -p /data/signal-cli /data/app \

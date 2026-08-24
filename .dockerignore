@@ -1,4 +1,5 @@
 node_modules
+public-next
 .git
 .env
 data

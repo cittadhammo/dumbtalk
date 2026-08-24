@@ -46,7 +46,7 @@ health checking, and rollback. This matters because old versions can stop workin
 ## CloudPhone
 
 Create an unpublished CloudPhone widget pointing to `PUBLIC_ORIGIN/#WIDGET_TOKEN`, using
-`public/sigdumb.png` as its icon. Add your phone's IMEI in the developer portal and enable
+`src/client/public/sigdumb.png` as its icon. Add your phone's IMEI in the developer portal and enable
 developer mode. The D-pad navigates, Centre selects, Left opens menus, and Right goes back.
 
 ## Development
