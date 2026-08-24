@@ -8,6 +8,8 @@ import { ConversationList } from './ConversationList';
 import { Softkeys } from './Softkeys';
 import { MainMenu } from './MainMenu';
 import type { Conversation } from '../state/types';
+import { useMindful } from '../state/useMindful';
+import { MindfulPause } from './MindfulPause';
 
 type Status = { signalReady: boolean; linked: boolean };
 
@@ -16,6 +18,9 @@ export function App() {
 	const [error, setError] = useState<string>();
 	const [conversation, setConversation] = useState<Conversation>();
 	const [menu, setMenu] = useState(false);
+	const [showArchived, setShowArchived] = useState(false);
+	const [archivedCount, setArchivedCount] = useState(0);
+	const mindful = useMindful(Boolean(status?.linked));
 	const boot = useCallback(() => {
 		if (!hasWidgetToken()) {
 			setError('This widget is not configured.');
@@ -43,17 +48,18 @@ export function App() {
 				event.preventDefault();
 				if (conversation) setConversation(undefined);
 				else if (menu) setMenu(false);
+				else if (showArchived) setShowArchived(false);
 			}
 		};
 		window.addEventListener('keydown', onKey);
 		return () => window.removeEventListener('keydown', onKey);
-	}, [conversation, menu]);
+	}, [conversation, menu, showArchived]);
 	const content = error ? <StartupScreen message={error} error onRetry={boot} />
 		: !status ? <StartupScreen message="Starting SigDumb…" />
 		: !status.signalReady ? <StartupScreen message="Starting Signal…" />
 		: !status.linked ? <LinkScreen onLinked={boot} />
-		: menu ? <MainMenu archivedCount={0} onArchived={() => {}} onBack={() => setMenu(false)} />
-		: conversation ? <ChatRoom conversation={conversation} onBack={() => setConversation(undefined)} />
-		: <ConversationList onOpen={setConversation} onMenu={() => setMenu(true)} />;
-	return <><div class="client-root">{content}</div><Softkeys /></>;
+		: menu ? <MainMenu archivedCount={archivedCount} onArchived={() => { setMenu(false); setShowArchived(true); }} onBack={() => setMenu(false)} />
+		: conversation ? <ChatRoom conversation={conversation} usage={mindful.usageLabel} onBack={() => setConversation(undefined)} />
+		: <ConversationList usage={mindful.usageLabel} showArchived={showArchived} onOpen={setConversation} onMenu={() => setMenu(true)} onLoaded={(next) => setArchivedCount(next.archivedCount)} />;
+	return <><div class="client-root">{content}</div><Softkeys />{mindful.pause && <MindfulPause reason={mindful.pause} onContinue={mindful.continuePause} onExit={mindful.exitPause} />}</>;
 }

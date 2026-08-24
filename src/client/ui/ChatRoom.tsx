@@ -5,7 +5,7 @@ import { ProtectedImage } from './ProtectedImage';
 import { setSoftkeys } from './Softkeys';
 import { Shell } from './Shell';
 
-type Props = { conversation: Conversation; onBack: () => void };
+type Props = { conversation: Conversation; onBack: () => void; usage?: string };
 
 function imageAttachments(message: Message) {
 	return (message.attachments ?? []).map((attachment, index) => attachment.contentType?.startsWith('image/') ? { attachment, index } : null).filter(Boolean) as { attachment: NonNullable<Message['attachments']>[number]; index: number }[];
@@ -23,7 +23,7 @@ function MessageBubble({ message, onImage }: { message: Message; onImage: (messa
 	</div>;
 }
 
-export function ChatRoom({ conversation, onBack }: Props) {
+export function ChatRoom({ conversation, onBack, usage }: Props) {
 	const [payload, setPayload] = useState<MessagesPayload>();
 	const [draft, setDraft] = useState('');
 	const [viewer, setViewer] = useState<{ message: Message; index: number }>();
@@ -66,8 +66,8 @@ export function ChatRoom({ conversation, onBack }: Props) {
 		await load();
 	}
 
-	if (!payload) return <Shell title={conversation.name}><p class="empty">Loading messages…</p></Shell>;
-	return <Shell title={conversation.name} className="room-screen">
+	if (!payload) return <Shell title={conversation.name} usage={usage}><p class="empty">Loading messages…</p></Shell>;
+	return <Shell title={conversation.name} usage={usage} className="room-screen">
 		<main class="messages" ref={panel} onScroll={() => { if (panel.current && panel.current.scrollHeight - panel.current.scrollTop - panel.current.clientHeight > 20) followBottom.current = false; }}>
 			{payload.messages.map((message) => <MessageBubble key={message.id} message={message} onImage={(selected, index) => setViewer({ message: selected, index })} />)}
 		</main>

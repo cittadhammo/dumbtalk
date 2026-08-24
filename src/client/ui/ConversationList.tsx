@@ -5,7 +5,7 @@ import { ProtectedImage } from './ProtectedImage';
 import { setSoftkeys } from './Softkeys';
 import { Shell } from './Shell';
 
-type Props = { onOpen: (conversation: Conversation) => void; onMenu: () => void };
+type Props = { onOpen: (conversation: Conversation) => void; onMenu: () => void; showArchived?: boolean; onLoaded?: (payload: Payload) => void; onExit?: () => void; usage?: string };
 type Payload = { conversations: Conversation[]; showingArchived: boolean; archivedCount: number };
 
 function initials(name: string) {
@@ -20,11 +20,10 @@ function preview(item: Conversation) {
 	return `${sender}: ${content}`;
 }
 
-export function ConversationList({ onOpen, onMenu }: Props) {
+export function ConversationList({ onOpen, onMenu, showArchived = false, onLoaded, onExit, usage }: Props) {
 	const [payload, setPayload] = useState<Payload>();
-	const [showArchived, setShowArchived] = useState(false);
 	const selectedId = useRef<string>();
-	const load = async (archived = showArchived) => setPayload(await api<Payload>(`/api/conversations${archived ? '?archived=1' : ''}`));
+	const load = async () => { const next = await api<Payload>(`/api/conversations${showArchived ? '?archived=1' : ''}`); setPayload(next); onLoaded?.(next); };
 	useEffect(() => { void load(); const timer = window.setInterval(() => void load(), 3000); return () => window.clearInterval(timer); }, [showArchived]);
 	useEffect(() => setSoftkeys({ left: 'Menu', center: 'Open', right: showArchived ? 'Back' : 'Exit' }), [showArchived]);
 	if (!payload) return <StartupList />;
@@ -37,7 +36,7 @@ export function ConversationList({ onOpen, onMenu }: Props) {
 			<span class="row-body"><strong>{item.name}{item.unread ? <span class="unread">{item.unread}</span> : null}</strong><span class="preview">{preview(item)}</span></span>
 		</button>
 	));
-	return <Shell title={showArchived ? 'Archived' : 'SigDumb'}><div class="conversation-list">{rows.length ? rows : <p class="empty">No conversations</p>}</div><button class="sr-only" onClick={onMenu}>Menu</button></Shell>;
+	return <Shell title={showArchived ? 'Archived' : 'SigDumb'} usage={usage}><div class="conversation-list">{rows.length ? rows : <p class="empty">No conversations</p>}</div><button class="sr-only" onClick={onMenu}>Menu</button></Shell>;
 }
 
 function StartupList() { return <Shell title="SigDumb"><p class="empty">Loading conversations…</p></Shell>; }
