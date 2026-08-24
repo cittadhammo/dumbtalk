@@ -158,14 +158,6 @@
 	font-size: 11px;
 }
 
-.destinationList button {
-	display: grid;
-	min-height: 44px;
-	grid-template-columns: 32px minmax(0, 1fr);
-	align-items: center;
-	gap: 7px;
-}
-
 .conversationList > button > span:not(.destinationAvatar) {
 	width: 100%;
 	overflow: hidden;
@@ -175,33 +167,10 @@
 	white-space: nowrap;
 }
 
-.destinationAvatar {
-	display: grid;
-	width: 30px;
-	height: 30px;
-	place-items: center;
-	background: #31584b;
-	border-radius: 50%;
-	color: white;
-	font-size: 9px;
-	font-weight: 800;
-}
-
-.destinationText {
-	display: grid;
-	min-width: 0;
-}
-
-.destinationText strong {
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
-
-.destinationText small {
-	color: tokens.$muted;
-	font-size: 9px;
-	text-transform: capitalize;
+.pickerList {
+	min-height: 0;
+	padding: 3px 0 8px;
+	overflow-y: auto;
 }
 
 .searchContent {

@@ -4,6 +4,10 @@ import { FocusInput } from '../../components/FocusInput';
 import { AppIcon } from '../../components/AppIcon';
 import { useProtectedImage } from '../../hooks/useProtectedImage';
 import { useFocusManager } from '../../platform/Focus';
+import {
+	ConversationRow,
+	sortConversations,
+} from '../conversations/ConversationRow';
 import type {
 	MessagingService,
 	UniversalConversation,
@@ -175,22 +179,20 @@ export function ConversationPicker({
 	conversations: UniversalConversation[];
 	onChoose: (conversation: UniversalConversation) => void;
 }) {
+	const sorted = sortConversations(conversations);
+
 	return (
 		<main class={styles.overlayScreen}>
 			<header><AppIcon name="forward" /> {title}</header>
-			<section class={`${styles.conversationList} ${styles.destinationList}`}>
-				{conversations.map((conversation, index) => (
-					<FocusButton
-						id={`destination-${conversation.id}`}
+			<section class={styles.pickerList}>
+				{sorted.map((conversation, index) => (
+					<ConversationRow
+						key={conversation.id}
+						idPrefix="destination"
+						conversation={conversation}
 						autoFocus={index === 0}
-						onClick={() => onChoose(conversation)}
-					>
-						<span class={styles.destinationAvatar}>{conversation.title.slice(0, 2).toUpperCase()}</span>
-						<span class={styles.destinationText}>
-							<strong>{conversation.title}</strong>
-							<small>{conversation.kind === 'group' ? 'Group' : 'Direct message'} · {conversation.serviceId}</small>
-						</span>
-					</FocusButton>
+						onOpen={() => onChoose(conversation)}
+					/>
 				))}
 			</section>
 		</main>

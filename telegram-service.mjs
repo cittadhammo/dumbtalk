@@ -43,7 +43,8 @@ function peerName(peer, fallback = "Unknown") {
 }
 
 function conversationKind(peer) {
-  return ["group", "supergroup", "channel", "gigagroup"].includes(peer?.type)
+  return peer?.type === "chat" ||
+    ["group", "supergroup", "channel", "gigagroup"].includes(peer?.chatType || peer?.type)
     ? "group"
     : "direct";
 }
@@ -472,7 +473,7 @@ export class TelegramService {
       telegramId: message.id,
       conversationId: conversationId(chat),
       direction: message.isService ? "system" : outgoing ? "out" : "in",
-      sender: outgoing ? "You" : peerName(message.sender, "Telegram user"),
+      sender: outgoing ? "You" : message.signature || peerName(message.sender, "Telegram user"),
       senderId: peerId(message.sender),
       text: message.isService ? serviceMessageText(message) : message.text || "",
       timestamp: message.date?.getTime?.() || Date.now(),

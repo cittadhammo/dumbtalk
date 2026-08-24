@@ -76,11 +76,16 @@ test("Telegram dialog refreshes are cached and flood waits serve stale data", as
         peer: { id: 1, type: "user", firstName: "Alice" },
         unreadCount: 2,
       };
+      yield {
+        peer: { id: -100, type: "chat", chatType: "supergroup", title: "Friends" },
+        unreadCount: 0,
+      };
     },
   };
 
   const first = await service.dialogs();
   assert.equal(first[0].name, "Alice");
+  assert.equal(first[1].kind, "group");
   assert.equal((await service.dialogs())[0].name, "Alice");
   assert.equal(calls, 1);
 
