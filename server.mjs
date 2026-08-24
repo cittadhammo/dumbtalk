@@ -18,7 +18,7 @@ const EVENTS_URL = "http://127.0.0.1:7583/api/v1/events";
 const MAX_MESSAGES = 3000;
 const invalidTokenAttempts = new Map();
 let messages = [];
-let appState = { archived: [], favorites: [], readThrough: {}, expirations: {}, mindfulUsage: {}, settings: { sendReadReceipts: true, sendTypingIndicators: true, linkPreviews: true, defaultExpiration: 0 } };
+let appState = { archived: [], favorites: [], muted: [], readThrough: {}, expirations: {}, mindfulUsage: {}, settings: { sendReadReceipts: true, sendTypingIndicators: true, linkPreviews: true, defaultExpiration: 0 } };
 let signalProcess;
 let signalBinary = "/usr/local/bin/signal-cli";
 let signalFallback = signalBinary;
@@ -721,7 +721,7 @@ async function api(req, res, url) {
     const conversations = allConversations
       .filter((item, index, list) => list.indexOf(item) === index)
       .filter(item => showArchived ? item.archived : !item.archived)
-      .map(item => ({ ...item, favorite: appState.favorites.includes(item.id) }))
+      .map(item => ({ ...item, favorite: appState.favorites.includes(item.id), muted: (appState.muted || []).includes(item.id) }))
       .sort((a, b) => Number(b.favorite) - Number(a.favorite) || (b.last?.timestamp || 0) - (a.last?.timestamp || 0));
     return json(res, 200, { account, conversations, archivedCount, showingArchived: showArchived });
   }
@@ -744,7 +744,9 @@ async function api(req, res, url) {
   if (url.pathname === "/api/search" && req.method === "GET") {
     const query = String(url.searchParams.get("q") || "").trim().toLocaleLowerCase();
     if (query.length < 2) return json(res, 200, { results: [] });
-    const results = messages.filter(item => item.text?.toLocaleLowerCase().includes(query)).slice(-100).reverse().map(item => ({ id: item.id, conversationId: [...conversationAliases].find(([, aliases]) => aliases.has(item.conversationId))?.[0] || item.conversationId, sender: item.direction === "out" ? "You" : item.sender, text: item.text, timestamp: item.timestamp }));
+    const requestedConversation = String(url.searchParams.get("conversationId") || "");
+    const requestedAliases = requestedConversation ? conversationAliases.get(requestedConversation) || new Set([requestedConversation]) : null;
+    const results = messages.filter(item => (!requestedAliases || requestedAliases.has(item.conversationId)) && item.text?.toLocaleLowerCase().includes(query)).slice(-100).reverse().map(item => ({ id: item.id, conversationId: [...conversationAliases].find(([, aliases]) => aliases.has(item.conversationId))?.[0] || item.conversationId, sender: item.direction === "out" ? "You" : item.sender, text: item.text, timestamp: item.timestamp }));
     return json(res, 200, { results });
   }
   if (url.pathname === "/api/read" && req.method === "POST") {
@@ -802,6 +804,11 @@ async function api(req, res, url) {
   if (url.pathname === "/api/conversation/favorite" && req.method === "POST") {
     const input = await body(req); const id = String(input.conversationId || ""); const favorites = new Set(appState.favorites || []); if (input.favorite) favorites.add(id); else favorites.delete(id); appState.favorites = [...favorites]; await persistState(); return json(res, 200, { favorite: Boolean(input.favorite) });
   }
+  if (url.pathname === "/api/conversation/mute" && req.method === "POST") {
+    const input = await body(req); const id = String(input.conversationId || "");
+    if (!/^(direct|group):.+/.test(id)) return json(res, 400, { error: "Invalid conversation" });
+    const muted = new Set(appState.muted || []); if (input.muted) muted.add(id); else muted.delete(id); appState.muted = [...muted]; await persistState(); return json(res, 200, { muted: Boolean(input.muted) });
+  }
   if (url.pathname === "/api/conversation/block" && req.method === "POST") {
     const input = await body(req); const account = await getAccount(); const params = input.kind === "group" ? { account, groupIds: [input.target] } : { account, recipients: [input.target] };
     await rpc(input.blocked ? "block" : "unblock", params); return json(res, 200, { blocked: Boolean(input.blocked) });
@@ -826,6 +833,9 @@ async function api(req, res, url) {
   }
   if (url.pathname === "/api/group/leave" && req.method === "POST") {
     const input = await body(req); const account = await getAccount(); await rpc("quitGroup", { account, groupId: input.groupId, delete: false, admins: [] }); return json(res, 200, { ok: true });
+  }
+  if (url.pathname === "/api/settings" && req.method === "GET") {
+    return json(res, 200, { settings: appState.settings });
   }
   if (url.pathname === "/api/settings" && req.method === "POST") {
     const input = await body(req);
@@ -987,6 +997,52 @@ async function api(req, res, url) {
     existing.attachments = [];
     await persistMessages();
     return json(res, 200, { message: existing });
+  }
+  if (url.pathname === "/api/attachment/send" && req.method === "POST") {
+    const account = await getAccount(); const kind = url.searchParams.get("kind"); const target = url.searchParams.get("target");
+    if (!account) return json(res, 409, { error: "Signal is not linked" });
+    if (!target || !["direct", "group"].includes(kind)) return json(res, 400, { error: "Invalid conversation" });
+    const chunks = []; let size = 0;
+    for await (const chunk of req) { size += chunk.length; if (size > 100 * 1024 * 1024) return json(res, 413, { error: "Attachment is too large" }); chunks.push(chunk); }
+    if (!size) return json(res, 400, { error: "Attachment is empty" });
+    const contentType = String(req.headers["content-type"] || "application/octet-stream").split(";")[0].replace(/[^\w.+/-]/g, "") || "application/octet-stream";
+    const originalName = basename(String(url.searchParams.get("filename") || "attachment")).replace(/[\x00-\x1f\x7f"\\]/g, "_").slice(0, 180) || "attachment";
+    const extension = extname(originalName).slice(0, 16).replace(/[^.\w-]/g, "");
+    const localName = `${Date.now()}-${randomBytes(6).toString("hex")}${extension}`; const path = join(MEDIA_DIR, localName);
+    await writeFile(path, Buffer.concat(chunks), { mode: 0o600 });
+    try {
+      const message = String(url.searchParams.get("caption") || "").trim().slice(0, 4000); const common = { account, message, attachments: [path] };
+      const conversationId = `${kind}:${target}`; const expiration = Number(appState.expirations[conversationId] ?? appState.settings.defaultExpiration ?? 0);
+      if (!(conversationId in appState.expirations) && expiration) { if (kind === "group") await rpc("updateGroup", { account, groupId: target, expiration }); else await rpc("updateContact", { account, recipient: target, expiration }); appState.expirations[conversationId] = expiration; await persistState(); }
+      const params = kind === "group" ? { ...common, groupId: target } : target === account ? { ...common, noteToSelf: true } : { ...common, recipient: [target] };
+      const result = await rpc("send", params, 180_000); const timestamp = Number(result?.timestamp || Date.now());
+      const sent = { id: `${timestamp}-out`, conversationId, direction: "out", sender: account, senderId: account, text: message, timestamp, status: "sent", receipts: {}, reactions: [], attachments: [{ id: localName, localFile: true, filename: originalName, contentType, size }], expiresInSeconds: expiration, expiresAt: expiration ? timestamp + expiration * 1000 : null };
+      messages.push(sent); await persistMessages(); return json(res, 200, { message: sent });
+    } catch (error) { await unlink(path).catch(() => {}); throw error; }
+  }
+  if (url.pathname === "/api/message/forward" && req.method === "POST") {
+    const input = await body(req); const account = await getAccount(); const source = messages.find(item => item.id === String(input.messageId) && !item.deleted);
+    if (!source) return json(res, 404, { error: "Message not found" });
+    if (!input.target || !["direct", "group"].includes(input.kind)) return json(res, 400, { error: "Invalid destination" });
+    const attachmentPaths = (source.attachments || []).map(attachment => attachment.localFile ? join(MEDIA_DIR, basename(String(attachment.id))) : join(SIGNAL_DIR, "attachments", basename(String(attachment.id)))).filter(path => existsSync(path));
+    const common = source.sticker ? { account, message: "", sticker: `${source.sticker.packId}:${source.sticker.stickerId}` } : { account, message: source.text || "", ...(attachmentPaths.length ? { attachments: attachmentPaths } : {}) };
+    if (!source.sticker && !common.message && !attachmentPaths.length) return json(res, 400, { error: "This message cannot be forwarded" });
+    const params = input.kind === "group" ? { ...common, groupId: input.target } : input.target === account ? { ...common, noteToSelf: true } : { ...common, recipient: [input.target] };
+    const result = await rpc("send", params, 180_000); const timestamp = Number(result?.timestamp || Date.now());
+    const sent = { ...source, id: `${timestamp}-out`, conversationId: `${input.kind}:${input.target}`, direction: "out", sender: account, senderId: account, timestamp, status: "sent", receipts: {}, reactions: [], quote: null, pinned: false };
+    messages.push(sent); await persistMessages(); return json(res, 200, { message: sent });
+  }
+  if (url.pathname === "/api/stickers" && req.method === "GET") {
+    const unique = new Map();
+    for (const message of messages) if (message.sticker?.packId && message.sticker?.stickerId) { const key = `${message.sticker.packId}:${message.sticker.stickerId}`; unique.set(key, { id: key, packId: message.sticker.packId, stickerId: message.sticker.stickerId, emoji: message.sticker.emoji || "", path: `/api/sticker/${encodeURIComponent(message.sticker.packId)}/${encodeURIComponent(message.sticker.stickerId)}` }); }
+    return json(res, 200, { stickers: [...unique.values()].slice(-120).reverse() });
+  }
+  if (url.pathname === "/api/sticker/send" && req.method === "POST") {
+    const input = await body(req); const account = await getAccount(); const packId = basename(String(input.packId || "")); const stickerId = basename(String(input.stickerId || ""));
+    if (!packId || !stickerId || !input.target || !["direct", "group"].includes(input.kind)) return json(res, 400, { error: "Invalid sticker" });
+    const common = { account, message: "", sticker: `${packId}:${stickerId}` }; const params = input.kind === "group" ? { ...common, groupId: input.target } : input.target === account ? { ...common, noteToSelf: true } : { ...common, recipient: [input.target] };
+    const result = await rpc("send", params); const timestamp = Number(result?.timestamp || Date.now()); const sent = { id: `${timestamp}-out`, conversationId: `${input.kind}:${input.target}`, direction: "out", sender: account, senderId: account, text: "", timestamp, status: "sent", receipts: {}, reactions: [], attachments: [], sticker: { packId, stickerId } };
+    messages.push(sent); await persistMessages(); return json(res, 200, { message: sent });
   }
   if (url.pathname.startsWith("/api/attachment/") && req.method === "GET") {
     const parts = url.pathname.slice(16).split("/");

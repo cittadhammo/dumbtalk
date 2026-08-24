@@ -1,0 +1,137 @@
+@use '../../styles/tokens';
+
+.composer {
+	position: absolute;
+	right: 4px;
+	bottom: 34px;
+	left: 4px;
+	z-index: 6;
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto auto;
+	gap: 4px;
+	align-items: center;
+	padding: 6px;
+	background: #10231d;
+	border: 1px solid #486b5e;
+	border-radius: 8px;
+	box-shadow: 0 4px 14px #000b;
+}
+
+.composer button {
+	min-height: 28px;
+	padding: 4px 6px;
+	background: #203b32;
+	border: 1px solid #486b5e;
+	border-radius: 5px;
+	color: tokens.$text;
+	font-size: 10px;
+}
+
+.fileInfo,
+.error {
+	grid-column: 1 / -1;
+	font-size: 9px;
+}
+
+.fileInfo { color: tokens.$muted; }
+.error { color: #ff9399; }
+.hiddenInput { display: none; }
+
+.overlayScreen {
+	display: grid;
+	height: 100%;
+	grid-template-rows: 29px minmax(0, 1fr);
+	overflow: hidden;
+	background: tokens.$background;
+}
+
+.overlayScreen > header {
+	padding: 6px 9px;
+	background: linear-gradient(135deg, #15342a, #10201b 70%);
+	border-bottom: 1px solid tokens.$line;
+	font-size: 13px;
+	font-weight: 700;
+}
+
+.stickerGrid {
+	display: grid;
+	grid-template-columns: repeat(4, minmax(0, 1fr));
+	gap: 5px;
+	align-content: start;
+	padding: 6px;
+	overflow-y: auto;
+}
+
+.stickerGrid button {
+	display: grid;
+	aspect-ratio: 1;
+	place-items: center;
+	padding: 3px;
+	background: #172a23;
+	border: 1px solid #304b42;
+	border-radius: 7px;
+}
+
+.stickerGrid img {
+	width: 100%;
+	height: 100%;
+	object-fit: contain;
+}
+
+.conversationList {
+	display: grid;
+	gap: 4px;
+	padding: 6px;
+	overflow-y: auto;
+}
+
+.conversationList button {
+	display: flex;
+	min-height: 34px;
+	flex-direction: column;
+	align-items: flex-start;
+	justify-content: center;
+	padding: 5px 7px;
+	background: #172a23;
+	border: 1px solid #304b42;
+	border-radius: 6px;
+	color: tokens.$text;
+	font-size: 11px;
+}
+
+.conversationList span {
+	width: 100%;
+	overflow: hidden;
+	color: tokens.$muted;
+	font-size: 9px;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.searchContent {
+	min-height: 0;
+	overflow-y: auto;
+}
+
+.searchRow {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) 31px;
+	gap: 4px;
+	padding: 6px;
+}
+
+.searchRow input {
+	min-width: 0;
+	padding: 5px;
+	background: #0d1c17;
+	border: 1px solid #38574c;
+	border-radius: 5px;
+	color: tokens.$text;
+}
+
+.searchRow button {
+	background: #285eb8;
+	border: 0;
+	border-radius: 5px;
+	color: white;
+}

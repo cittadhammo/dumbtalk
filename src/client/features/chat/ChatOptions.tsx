@@ -9,6 +9,7 @@ type Props = {
 	onExpiration: (seconds: number) => void;
 	onPoll: () => void;
 	onPins: () => void;
+	onSearch: () => void;
 	onGroup: () => void;
 	onBlock: () => void;
 	onMessageRequest: (response: 'accept' | 'delete') => void;
@@ -58,6 +59,7 @@ export function ChatOptions({
 	onExpiration,
 	onPoll,
 	onPins,
+	onSearch,
 	onGroup,
 	onBlock,
 	onMessageRequest,
@@ -74,6 +76,11 @@ export function ChatOptions({
 			<section class={styles.list}>
 				<p class={styles.heading}>Message</p>
 				<div class={styles.optionGrid}>
+					{capabilities?.search && (
+						<OptionButton id="chat-option-search" icon="⌕" onClick={onSearch}>
+							Search chat
+						</OptionButton>
+					)}
 					{capabilities?.polls && (
 						<OptionButton id="chat-option-poll" icon="▥" onClick={onPoll}>
 							Create poll

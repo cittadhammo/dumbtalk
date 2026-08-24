@@ -55,6 +55,13 @@ test('universal messaging contract covers rich messages and service management',
 		'blocking',
 		'messageRequests',
 		'disappearingMessages',
+		'search',
+		'compose',
+		'settings',
+		'attachments',
+		'forwarding',
+		'stickers',
+		'muting',
 	]) {
 		assert.match(contract, new RegExp(`\\b${feature}\\b`));
 	}
@@ -69,6 +76,12 @@ test('universal messaging contract covers rich messages and service management',
 		'/api/view-once/open',
 		'/api/group/update',
 		'/api/identity/trust',
+		'/api/search',
+		'/api/settings',
+		'/api/attachment/send',
+		'/api/message/forward',
+		'/api/sticker/send',
+		'/api/conversation/mute',
 	]) {
 		assert.match(signal, new RegExp(route.replaceAll('/', '\\/')));
 	}

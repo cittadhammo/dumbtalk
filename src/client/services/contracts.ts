@@ -15,6 +15,8 @@ export type UniversalAttachment = {
 	kind: AttachmentKind;
 	path?: string;
 	contentType?: string;
+	filename?: string;
+	size?: number;
 	caption?: string;
 	width?: number;
 	height?: number;
@@ -51,6 +53,36 @@ export type ServiceCapabilities = {
 	blocking: boolean;
 	messageRequests: boolean;
 	disappearingMessages: boolean;
+	search: boolean;
+	compose: boolean;
+	settings: boolean;
+	attachments: boolean;
+	forwarding: boolean;
+	stickers: boolean;
+	muting: boolean;
+};
+
+export type UniversalSettings = {
+	sendReadReceipts: boolean;
+	sendTypingIndicators: boolean;
+	linkPreviews: boolean;
+	defaultExpiration: number;
+};
+
+export type UniversalSearchResult = {
+	id: string;
+	conversationId: string;
+	sender: string;
+	text: string;
+	sentAt: number;
+};
+
+export type UniversalSticker = {
+	id: string;
+	packId: string;
+	stickerId: string;
+	emoji?: string;
+	path: string;
 };
 
 export type UniversalReceipt = {
@@ -99,6 +131,7 @@ export type UniversalConversation = {
 	isNoteToSelf: boolean;
 	isArchived: boolean;
 	isFavourite: boolean;
+	isMuted: boolean;
 	unreadCount: number;
 	typingNames: string[];
 	avatarPath?: string;
@@ -148,8 +181,27 @@ export type MessagingService = {
 	) => Promise<void>;
 	updateConversation: (
 		conversation: UniversalConversation,
-		update: { archived?: boolean; favourite?: boolean; expiration?: number },
+		update: { archived?: boolean; favourite?: boolean; muted?: boolean; expiration?: number },
 	) => Promise<void>;
+	searchMessages: (
+		query: string,
+		conversation?: UniversalConversation,
+	) => Promise<UniversalSearchResult[]>;
+	createDirect: (address: string, title?: string) => UniversalConversation;
+	createGroup: (name: string, members: string[]) => Promise<void>;
+	getSettings: () => Promise<UniversalSettings>;
+	updateSettings: (settings: UniversalSettings) => Promise<UniversalSettings>;
+	sendAttachment: (
+		conversation: UniversalConversation,
+		file: File,
+		caption?: string,
+	) => Promise<void>;
+	forwardMessage: (
+		message: UniversalMessage,
+		target: UniversalConversation,
+	) => Promise<void>;
+	listStickers: () => Promise<UniversalSticker[]>;
+	sendSticker: (conversation: UniversalConversation, sticker: UniversalSticker) => Promise<void>;
 	editMessage: (
 		conversation: UniversalConversation,
 		message: UniversalMessage,

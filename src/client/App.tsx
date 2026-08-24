@@ -2,12 +2,19 @@ import { useCallback, useEffect, useState } from 'preact/hooks';
 import { api, ApiError, hasWidgetToken } from './api/client';
 import { FocusButton } from './components/FocusButton';
 import { ChatRoom } from './features/chat/ChatRoom';
+import {
+	ComposeScreen,
+	MainMenu,
+	NewGroupScreen,
+	SearchScreen,
+	SettingsScreen,
+} from './features/app/AppScreens';
 import { ConversationList } from './features/conversations/ConversationList';
 import { ServicesScreen } from './features/services/ServicesScreen';
 import { FocusProvider, useFocusManager } from './platform/Focus';
 import { SoftkeyProvider, useSoftkeys } from './platform/Softkeys';
 import { MessagingServiceProvider } from './services/ServiceContext';
-import type { UniversalConversation } from './services/contracts';
+import type { UniversalConversation, UniversalSearchResult } from './services/contracts';
 import styles from './styles/App.module.scss';
 
 type Status = {
@@ -110,8 +117,13 @@ function ErrorScreen({ message, retry }: { message: string; retry: () => void })
 
 type Screen =
 	| { name: 'conversations'; archived: boolean }
+	| { name: 'menu'; selected?: UniversalConversation; fromArchived?: boolean }
+	| { name: 'compose' }
+	| { name: 'group' }
+	| { name: 'search' }
+	| { name: 'settings' }
 	| { name: 'services' }
-	| { name: 'chat'; conversation: UniversalConversation };
+	| { name: 'chat'; conversation: UniversalConversation; result?: UniversalSearchResult };
 
 function UnifiedApp() {
 	const [screen, setScreen] = useState<Screen>({ name: 'conversations', archived: false });
@@ -120,10 +132,52 @@ function UnifiedApp() {
 		return <ServicesScreen onBack={() => setScreen({ name: 'conversations', archived: false })} />;
 	}
 
+	if (screen.name === 'menu') {
+		return (
+			<MainMenu
+				selected={screen.selected}
+				onBack={() => setScreen({ name: 'conversations', archived: Boolean(screen.fromArchived) })}
+				onCompose={() => setScreen({ name: 'compose' })}
+				onGroup={() => setScreen({ name: 'group' })}
+				onSearch={() => setScreen({ name: 'search' })}
+				onSettings={() => setScreen({ name: 'settings' })}
+				onArchived={() => setScreen({ name: 'conversations', archived: true })}
+				onServices={() => setScreen({ name: 'services' })}
+			/>
+		);
+	}
+
+	if (screen.name === 'compose') {
+		return (
+			<ComposeScreen
+				onBack={() => setScreen({ name: 'conversations', archived: false })}
+				onOpen={(conversation) => setScreen({ name: 'chat', conversation })}
+			/>
+		);
+	}
+
+	if (screen.name === 'group') {
+		return <NewGroupScreen onBack={() => setScreen({ name: 'conversations', archived: false })} />;
+	}
+
+	if (screen.name === 'search') {
+		return (
+			<SearchScreen
+				onBack={() => setScreen({ name: 'conversations', archived: false })}
+				onOpen={(conversation, result) => setScreen({ name: 'chat', conversation, result })}
+			/>
+		);
+	}
+
+	if (screen.name === 'settings') {
+		return <SettingsScreen onBack={() => setScreen({ name: 'menu' })} />;
+	}
+
 	if (screen.name === 'chat') {
 		return (
 			<ChatRoom
 				conversation={screen.conversation}
+				initialMessage={screen.result}
 				onBack={() => setScreen({ name: 'conversations', archived: false })}
 			/>
 		);
@@ -132,7 +186,7 @@ function UnifiedApp() {
 	return (
 		<ConversationList
 			archived={screen.archived}
-			onServices={() => setScreen({ name: 'services' })}
+			onMenu={(selected) => setScreen({ name: 'menu', selected, fromArchived: screen.archived })}
 			onArchived={() => setScreen({ name: 'conversations', archived: !screen.archived })}
 			onOpen={(conversation) => setScreen({ name: 'chat', conversation })}
 		/>

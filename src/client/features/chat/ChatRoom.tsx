@@ -10,6 +10,12 @@ import {
 	VoiceComposer,
 } from './ChatOptionScreens';
 import { MediaViewer } from './MessageMedia';
+import {
+	AttachmentComposer,
+	ChatSearch,
+	ConversationPicker,
+	StickerPicker,
+} from './ChatUtilities';
 import { attachmentLabel, MessageBubble } from './MessageBubble';
 import { readMessagePage, writeMessagePage } from '../../cache/snapshots';
 import { useFocusManager, type ArrowKey } from '../../platform/Focus';
@@ -20,11 +26,13 @@ import type {
 	ServiceCapabilities,
 	UniversalConversation,
 	UniversalMessage,
+	UniversalSearchResult,
 } from '../../services/contracts';
 import styles from './ChatRoom.module.scss';
 
 type Props = {
 	conversation: UniversalConversation;
+	initialMessage?: UniversalSearchResult;
 	onBack: () => void;
 };
 
@@ -41,6 +49,7 @@ function MessageActions({
 	onEdit,
 	onDelete,
 	onPin,
+	onForward,
 	expanded,
 	onToggleExpanded,
 	onVote,
@@ -54,6 +63,7 @@ function MessageActions({
 	onEdit: () => void;
 	onDelete: () => void;
 	onPin: () => void;
+	onForward: () => void;
 	expanded: boolean;
 	onToggleExpanded: () => void;
 	onVote: (options: number[]) => void;
@@ -283,6 +293,18 @@ function MessageActions({
 					>
 						↩ Reply
 					</FocusButton>
+					{capabilities?.forwarding !== false && (
+						<FocusButton
+							id="message-action-forward"
+							grid="message-actions"
+							columns={2}
+							type="button"
+							class={styles.action}
+							onClick={onForward}
+						>
+							➤ Forward
+						</FocusButton>
+					)}
 					{capabilities?.pins !== false && (
 						<FocusButton
 							id="message-action-pin"
@@ -400,7 +422,7 @@ function MessageActions({
 	);
 }
 
-export function ChatRoom({ conversation, onBack }: Props) {
+export function ChatRoom({ conversation, initialMessage, onBack }: Props) {
 	const { serviceFor } = useMessagingServices();
 	const { activate, focus } = useFocusManager();
 	const service = serviceFor(conversation.serviceId);
@@ -426,8 +448,12 @@ export function ChatRoom({ conversation, onBack }: Props) {
 	const [composeControl, setComposeControl] = useState<'voice' | 'clear' | 'latest' | 'send'>();
 	const [actionMessage, setActionMessage] = useState<UniversalMessage>();
 	const [showOptions, setShowOptions] = useState(false);
-	const [optionPanel, setOptionPanel] = useState<'pins' | 'poll' | 'group' | 'safety'>();
+	const [optionPanel, setOptionPanel] = useState<'pins' | 'poll' | 'group' | 'safety' | 'search'>();
 	const [voiceOpen, setVoiceOpen] = useState(false);
+	const [attachmentOpen, setAttachmentOpen] = useState(false);
+	const [stickerOpen, setStickerOpen] = useState(false);
+	const [forwarding, setForwarding] = useState<UniversalMessage>();
+	const [destinations, setDestinations] = useState<UniversalConversation[]>([]);
 	const [safetyNumber, setSafetyNumber] = useState('Loading…');
 	const [pins, setPins] = useState<UniversalMessage[]>([]);
 	const [pinIndex, setPinIndex] = useState(0);
@@ -496,7 +522,13 @@ export function ChatRoom({ conversation, onBack }: Props) {
 	};
 
 	useEffect(() => {
-		void load();
+		if (initialMessage) {
+			followBottom.current = false;
+			pendingFocus.current = initialMessage.id;
+			void load(initialMessage.sentAt + 1);
+		} else {
+			void load();
+		}
 		void service
 			.capabilities()
 			.then(setCapabilities)
@@ -505,13 +537,13 @@ export function ChatRoom({ conversation, onBack }: Props) {
 			if (typingTimer.current) window.clearTimeout(typingTimer.current);
 			void service.setTyping(conversation, false);
 		};
-	}, [conversation.id]);
+	}, [conversation.id, initialMessage?.id]);
 
 	useEffect(() => {
-		if (actionMessage || showOptions || optionPanel || viewer || voiceOpen) return;
+		if (actionMessage || showOptions || optionPanel || viewer || voiceOpen || attachmentOpen || stickerOpen || forwarding) return;
 		const timer = window.setInterval(() => void load(), 2_500);
 		return () => window.clearInterval(timer);
-	}, [actionMessage, conversation.id, optionPanel, showOptions, viewer, voiceOpen]);
+	}, [actionMessage, attachmentOpen, conversation.id, forwarding, optionPanel, showOptions, stickerOpen, viewer, voiceOpen]);
 
 	useEffect(() => {
 		const cached = readMessagePage(conversation.id);
@@ -524,6 +556,11 @@ export function ChatRoom({ conversation, onBack }: Props) {
 
 		if (initialLoad.current) {
 			initialLoad.current = false;
+			if (initialMessage) {
+				followBottom.current = false;
+				window.requestAnimationFrame(() => focus(`message-${initialMessage.id}`));
+				return;
+			}
 			const unread = page.messages.find(
 				(message) => message.direction === 'incoming' && message.sentAt > page.readThrough,
 			);
@@ -676,6 +713,14 @@ export function ChatRoom({ conversation, onBack }: Props) {
 		return true;
 	};
 
+	const controlBeforeInput = () => {
+		if (draft) return 'chat-clear-draft';
+		if (capabilities?.stickers) return 'chat-stickers';
+		if (capabilities?.attachments) return 'chat-attachment';
+		if (capabilities?.voiceNotes) return 'chat-voice';
+		return 'chat-compose';
+	};
+
 	const openMessageActions = () => {
 		const message = page?.messages.find((candidate) => candidate.id === selectedMessageId);
 		if (message) setActionMessage(message);
@@ -799,6 +844,32 @@ export function ChatRoom({ conversation, onBack }: Props) {
 				void load();
 			})
 			.catch((reason) => setError(reason instanceof Error ? reason.message : 'Unable to delete message'));
+	};
+
+	const beginForward = () => {
+		if (!actionMessage) return;
+		const source = actionMessage;
+		void Promise.all([
+			service.listConversations({ archived: false }),
+			service.listConversations({ archived: true }),
+		])
+			.then(([active, archived]) => {
+				setDestinations([...active.conversations, ...archived.conversations]);
+				setForwarding(source);
+				setActionMessage(undefined);
+			})
+			.catch((reason) => setError(reason instanceof Error ? reason.message : 'Unable to load chats'));
+	};
+
+	const jumpToSearchResult = (result: UniversalSearchResult) => {
+		setOptionPanel(undefined);
+		followBottom.current = false;
+		pendingFocus.current = result.id;
+		if (page?.messages.some((message) => message.id === result.id)) {
+			window.requestAnimationFrame(() => focus(`message-${result.id}`));
+			return;
+		}
+		void load(result.sentAt + 1);
 	};
 
 	const votePoll = (options: number[]) => {
@@ -936,15 +1007,43 @@ export function ChatRoom({ conversation, onBack }: Props) {
 		if (voiceOpen) window.requestAnimationFrame(() => focus('voice-toggle'));
 	}, [focus, voiceOpen]);
 
+	const goBack = () => {
+		if (stickerOpen) {
+			setStickerOpen(false);
+			window.requestAnimationFrame(() => inputRef.current?.focus({ preventScroll: true }));
+			return;
+		}
+		if (forwarding) {
+			const messageId = forwarding.id;
+			setForwarding(undefined);
+			window.requestAnimationFrame(() => focus(`message-${messageId}`));
+			return;
+		}
+		if (attachmentOpen) {
+			setAttachmentOpen(false);
+			window.requestAnimationFrame(() => inputRef.current?.focus({ preventScroll: true }));
+			return;
+		}
+		if (viewer) return closeViewer();
+		if (actionMessage) {
+			if (expandedReactions) setExpandedReactions(false);
+			else closeMessageActions();
+			return;
+		}
+		if (optionPanel) return setOptionPanel(undefined);
+		if (showOptions) return setShowOptions(false);
+		onBack();
+	};
+
 	useSoftkeys(
 		{
 			left:
-				actionMessage || showOptions || optionPanel
+				actionMessage || showOptions || optionPanel || stickerOpen || forwarding || attachmentOpen
 					? undefined
 					: selectedMessageId
 						? { label: 'Message', onPress: openMessageActions }
 						: { label: 'Options', onPress: () => setShowOptions(true) },
-			center: viewer
+			center: viewer || stickerOpen || forwarding || attachmentOpen
 				? { label: 'Select', onPress: activate }
 				: actionMessage
 					? { label: 'Select', onPress: activate }
@@ -986,17 +1085,7 @@ export function ChatRoom({ conversation, onBack }: Props) {
 								},
 			right: {
 				label: 'Back',
-				onPress: viewer
-					? closeViewer
-					: actionMessage
-						? expandedReactions
-							? () => setExpandedReactions(false)
-							: closeMessageActions
-						: optionPanel
-							? () => setOptionPanel(undefined)
-							: showOptions
-								? () => setShowOptions(false)
-								: onBack,
+				onPress: goBack,
 			},
 		},
 		[
@@ -1013,6 +1102,9 @@ export function ChatRoom({ conversation, onBack }: Props) {
 			activate,
 			optionPanel,
 			showOptions,
+			stickerOpen,
+			forwarding,
+			attachmentOpen,
 			viewer,
 		],
 	);
@@ -1031,6 +1123,7 @@ export function ChatRoom({ conversation, onBack }: Props) {
 				onEdit={beginEdit}
 				onDelete={deleteMessage}
 				onPin={pinMessage}
+				onForward={beginForward}
 				expanded={expandedReactions}
 				onToggleExpanded={() => setExpandedReactions((value) => !value)}
 				onVote={votePoll}
@@ -1066,6 +1159,44 @@ export function ChatRoom({ conversation, onBack }: Props) {
 				/>
 			);
 		}
+	}
+
+	if (stickerOpen) {
+		return (
+			<StickerPicker
+				service={service}
+				onChoose={(sticker) => {
+					void service
+						.sendSticker(conversation, sticker)
+						.then(() => {
+							setStickerOpen(false);
+							followBottom.current = true;
+							void load();
+							window.requestAnimationFrame(() => inputRef.current?.focus({ preventScroll: true }));
+						})
+						.catch((reason) => setError(reason instanceof Error ? reason.message : 'Unable to send sticker'));
+				}}
+			/>
+		);
+	}
+
+	if (forwarding) {
+		return (
+			<ConversationPicker
+				title="Forward to"
+				conversations={destinations}
+				onChoose={(target) => {
+					void service
+						.forwardMessage(forwarding, target)
+						.then(() => {
+							const messageId = forwarding.id;
+							setForwarding(undefined);
+							window.requestAnimationFrame(() => focus(`message-${messageId}`));
+						})
+						.catch((reason) => setError(reason instanceof Error ? reason.message : 'Unable to forward'));
+				}}
+			/>
+		);
 	}
 
 	if (optionPanel === 'poll') {
@@ -1118,11 +1249,25 @@ export function ChatRoom({ conversation, onBack }: Props) {
 		);
 	}
 
+	if (optionPanel === 'search') {
+		return (
+			<ChatSearch
+				service={service}
+				conversation={conversation}
+				onChoose={jumpToSearchResult}
+			/>
+		);
+	}
+
 	if (showOptions) {
 		return (
 			<ChatOptions
 				conversation={currentConversation}
 				capabilities={capabilities}
+				onSearch={() => {
+					setShowOptions(false);
+					setOptionPanel('search');
+				}}
 				onExpiration={(expiration) => updateConversation({ expiration })}
 				onPoll={() => setOptionPanel('poll')}
 				onPins={openPins}
@@ -1287,6 +1432,21 @@ export function ChatRoom({ conversation, onBack }: Props) {
 					}}
 				/>
 			)}
+			{attachmentOpen && capabilities?.attachments && (
+				<AttachmentComposer
+					caption={draft}
+					onClose={() => {
+						setAttachmentOpen(false);
+						window.requestAnimationFrame(() => inputRef.current?.focus({ preventScroll: true }));
+					}}
+					onSend={async (file, caption) => {
+						await service.sendAttachment(conversation, file, caption);
+						if (caption) clearDraft();
+						followBottom.current = true;
+						await load();
+					}}
+				/>
+			)}
 			<form class={styles.compose} ref={formRef} onSubmit={send}>
 				{editing && (
 					<div class={styles.replying}>
@@ -1320,7 +1480,7 @@ export function ChatRoom({ conversation, onBack }: Props) {
 						}}
 						onArrow={(key) => {
 							if (key === 'ArrowRight') {
-								focus(draft ? 'chat-clear-draft' : 'chat-compose');
+								focus(capabilities?.attachments ? 'chat-attachment' : capabilities?.stickers ? 'chat-stickers' : draft ? 'chat-clear-draft' : 'chat-compose');
 								return true;
 							}
 							return true;
@@ -1331,11 +1491,50 @@ export function ChatRoom({ conversation, onBack }: Props) {
 						●
 					</FocusButton>
 				)}
+				{capabilities?.attachments && (
+					<FocusButton
+						id="chat-attachment"
+						vertical={false}
+						class={styles.utility}
+						type="button"
+						onArrow={(key) => {
+							if (key === 'ArrowLeft') focus(capabilities?.voiceNotes ? 'chat-voice' : 'chat-attachment');
+							if (key === 'ArrowRight') focus(capabilities?.stickers ? 'chat-stickers' : draft ? 'chat-clear-draft' : 'chat-compose');
+							return true;
+						}}
+						onClick={() => setAttachmentOpen(true)}
+						aria-label="Send attachment"
+					>
+						+
+					</FocusButton>
+				)}
+				{capabilities?.stickers && (
+					<FocusButton
+						id="chat-stickers"
+						vertical={false}
+						class={styles.utility}
+						type="button"
+						onArrow={(key) => {
+							if (key === 'ArrowLeft') focus(capabilities?.attachments ? 'chat-attachment' : capabilities?.voiceNotes ? 'chat-voice' : 'chat-stickers');
+							if (key === 'ArrowRight') focus(draft ? 'chat-clear-draft' : 'chat-compose');
+							return true;
+						}}
+						onClick={() => setStickerOpen(true)}
+						aria-label="Send sticker"
+					>
+						◇
+					</FocusButton>
+				)}
 				{draft && (
 					<FocusButton
 						id="chat-clear-draft"
 						class={styles.utility}
 						type="button"
+						onArrow={(key) => {
+							if (key === 'ArrowLeft') focus(capabilities?.stickers ? 'chat-stickers' : capabilities?.attachments ? 'chat-attachment' : capabilities?.voiceNotes ? 'chat-voice' : 'chat-clear-draft');
+							if (key === 'ArrowRight') focus('chat-compose');
+							return true;
+						}}
 						onFocus={() => {
 							setComposeControl('clear');
 							setComposerFocused(false);
@@ -1360,13 +1559,9 @@ export function ChatRoom({ conversation, onBack }: Props) {
 						setComposeControl(undefined);
 					}}
 					onArrow={(key) => {
-						if (key === 'ArrowLeft' && capabilities?.voiceNotes) {
-							focus('chat-voice');
-							return true;
-						}
 						if (key === 'ArrowUp') return focusLastMessage();
 						if (key === 'ArrowLeft') {
-							focus(draft ? 'chat-clear-draft' : capabilities?.voiceNotes ? 'chat-voice' : 'chat-compose');
+							focus(controlBeforeInput());
 							return true;
 						}
 						if (key === 'ArrowRight') {

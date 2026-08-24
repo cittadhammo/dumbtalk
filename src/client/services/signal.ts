@@ -7,12 +7,16 @@ import type {
 	ServiceStatus,
 	UniversalConversation,
 	UniversalMessage,
+	UniversalSearchResult,
+	UniversalSettings,
+	UniversalSticker,
 } from './contracts';
 
 type SignalStatusResponse = {
 	signalReady: boolean;
 	linked: boolean;
 	accounts?: string[];
+	settings?: UniversalSettings;
 };
 
 type SignalMessage = {
@@ -22,7 +26,7 @@ type SignalMessage = {
 	direction: 'in' | 'out' | 'system';
 	sender?: string;
 	text?: string;
-	attachments?: { id?: string; contentType?: string; caption?: string; width?: number; height?: number }[];
+	attachments?: { id?: string; contentType?: string; filename?: string; size?: number; caption?: string; width?: number; height?: number }[];
 	reactions?: { emoji: string; author?: string; own?: boolean }[];
 	status?: 'sent' | 'delivered' | 'read';
 	quote?: { author?: string; text?: string };
@@ -57,6 +61,7 @@ type SignalConversation = {
 	name: string;
 	archived?: boolean;
 	favorite?: boolean;
+	muted?: boolean;
 	noteToSelf?: boolean;
 	unread?: number;
 	typing?: string[];
@@ -126,6 +131,8 @@ function toUniversalMessage(message: SignalMessage): UniversalMessage {
 			path: `/api/attachment/${encodeURIComponent(message.id)}/${index}`,
 			kind: attachmentKind(attachment.contentType),
 			contentType: attachment.contentType,
+			filename: attachment.filename,
+			size: attachment.size,
 			caption: attachment.caption,
 			width: attachment.width,
 			height: attachment.height,
@@ -175,6 +182,7 @@ function toUniversalConversation(conversation: SignalConversation): UniversalCon
 		isNoteToSelf: Boolean(conversation.noteToSelf),
 		isArchived: Boolean(conversation.archived),
 		isFavourite: Boolean(conversation.favorite),
+		isMuted: Boolean(conversation.muted),
 		unreadCount: conversation.unread ?? 0,
 		typingNames: conversation.typing ?? [],
 		avatarPath: conversation.avatar ?? undefined,
@@ -290,6 +298,12 @@ export const signalService: MessagingService = {
 				body: JSON.stringify({ conversationId: conversation.remoteId, favorite: update.favourite }),
 			});
 		}
+		if (update.muted !== undefined) {
+			await api('/api/conversation/mute', {
+				method: 'POST',
+				body: JSON.stringify({ conversationId: conversation.remoteId, muted: update.muted }),
+			});
+		}
 		if (update.expiration !== undefined) {
 			const [, target] = conversation.remoteId.split(/:(.*)/s);
 			await api('/api/conversation/expiration', {
@@ -297,6 +311,116 @@ export const signalService: MessagingService = {
 				body: JSON.stringify({ kind: conversation.kind, target, expiration: update.expiration }),
 			});
 		}
+	},
+
+	async searchMessages(query, conversation): Promise<UniversalSearchResult[]> {
+		const parameters = new URLSearchParams({ q: query });
+		if (conversation) parameters.set('conversationId', conversation.remoteId);
+		const response = await api<{
+			results: { id: string; conversationId: string; sender?: string; text?: string; timestamp: number }[];
+		}>(`/api/search?${parameters}`);
+		return response.results.map((result) => ({
+			id: `signal:${result.id}`,
+			conversationId: `signal:${result.conversationId}`,
+			sender: result.sender ?? 'Someone',
+			text: result.text ?? '',
+			sentAt: result.timestamp,
+		}));
+	},
+
+	createDirect(address, title): UniversalConversation {
+		const target = address.trim();
+		return {
+			id: `signal:direct:${target}`,
+			serviceId: 'signal',
+			remoteId: `direct:${target}`,
+			kind: 'direct',
+			title: title?.trim() || target,
+			isNoteToSelf: false,
+			isArchived: false,
+			isFavourite: false,
+			isMuted: false,
+			unreadCount: 0,
+			typingNames: [],
+			expiration: 0,
+			isBlocked: false,
+			isMessageRequest: false,
+			isIdentityChanged: false,
+			isInvited: false,
+			members: [],
+			adminIds: [],
+			permissions: {},
+		};
+	},
+
+	async createGroup(name, members): Promise<void> {
+		await api('/api/group/create', {
+			method: 'POST',
+			body: JSON.stringify({ name, members }),
+		});
+	},
+
+	async getSettings(): Promise<UniversalSettings> {
+		const response = await api<{ settings: UniversalSettings }>('/api/settings');
+		return response.settings;
+	},
+
+	async updateSettings(settings): Promise<UniversalSettings> {
+		const response = await api<{ settings: UniversalSettings }>('/api/settings', {
+			method: 'POST',
+			body: JSON.stringify(settings),
+		});
+		return response.settings;
+	},
+
+	async sendAttachment(conversation, file, caption = ''): Promise<void> {
+		const [, target] = conversation.remoteId.split(/:(.*)/s);
+		const parameters = new URLSearchParams({
+			kind: conversation.kind,
+			target,
+			filename: file.name,
+			caption,
+		});
+		const response = await fetch(`/api/attachment/send?${parameters}`, {
+			method: 'POST',
+			headers: {
+				authorization: `Bearer ${widgetToken()}`,
+				'content-type': file.type || 'application/octet-stream',
+			},
+			body: file,
+		});
+		if (!response.ok) {
+			throw new Error((await response.json().catch(() => ({}))).error ?? 'Attachment failed');
+		}
+	},
+
+	async forwardMessage(message, target): Promise<void> {
+		await api('/api/message/forward', {
+			method: 'POST',
+			body: JSON.stringify({
+				messageId: message.id.replace(/^signal:/, ''),
+				kind: target.kind,
+				target: target.remoteId.replace(/^(direct|group):/, ''),
+			}),
+		});
+	},
+
+	async listStickers(): Promise<UniversalSticker[]> {
+		const response = await api<{ stickers: UniversalSticker[] }>('/api/stickers');
+		return response.stickers;
+	},
+
+	async sendSticker(conversation, sticker): Promise<void> {
+		const [, target] = conversation.remoteId.split(/:(.*)/s);
+		await api('/api/sticker/send', {
+			method: 'POST',
+			body: JSON.stringify({
+				kind: conversation.kind,
+				target,
+				packId: sticker.packId,
+				stickerId: sticker.stickerId,
+			}),
+		});
 	},
 
 	async editMessage(conversation, message, text): Promise<void> {
@@ -338,6 +462,13 @@ export const signalService: MessagingService = {
 			blocking: true,
 			messageRequests: true,
 			disappearingMessages: true,
+			search: true,
+			compose: true,
+			settings: true,
+			attachments: true,
+			forwarding: true,
+			stickers: Boolean(response.capabilities?.stickers),
+			muting: true,
 		};
 	},
 

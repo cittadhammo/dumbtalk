@@ -12,7 +12,7 @@ export function attachmentLabel(message: UniversalMessage) {
 	if (attachment.kind === 'image') return '▧ Photo';
 	if (attachment.kind === 'video') return '▶ Video';
 	if (attachment.kind === 'audio') return '▶ Voice note';
-	return '▣ Attachment';
+	return `▣ ${attachment.filename || 'Attachment'}`;
 }
 
 function Receipt({ message }: { message: UniversalMessage }) {
