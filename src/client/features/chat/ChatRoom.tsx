@@ -1,6 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { FocusButton } from '../../components/FocusButton';
 import { FocusInput } from '../../components/FocusInput';
+import { ChatOptions } from './ChatOptions';
+import { MediaViewer, MessageMedia } from './MessageMedia';
 import { readMessagePage, writeMessagePage } from '../../cache/snapshots';
 import { useFocusManager, type ArrowKey } from '../../platform/Focus';
 import { useSoftkeys } from '../../platform/Softkeys';
@@ -40,12 +42,14 @@ function MessageBubble({
 	message,
 	showTime,
 	groupStart,
+	onOpenMedia,
 	onFocus,
 	onArrow,
 }: {
 	message: UniversalMessage;
 	showTime: boolean;
 	groupStart: boolean;
+	onOpenMedia: () => void;
 	onFocus: () => void;
 	onArrow: (key: ArrowKey) => boolean;
 }) {
@@ -67,6 +71,7 @@ function MessageBubble({
 			onClick={() => undefined}
 		>
 			{attachment && <span class={styles.attachment}>{attachment}</span>}
+			{message.attachments.length > 0 && <MessageMedia message={message} onOpen={onOpenMedia} />}
 			{message.text && <span>{message.text}</span>}
 			{reactions && <span class={styles.reactions}>{reactions}</span>}
 			{showTime && (
@@ -139,6 +144,8 @@ export function ChatRoom({ conversation, onBack }: Props) {
 	const [composerFocused, setComposerFocused] = useState(false);
 	const [composeControl, setComposeControl] = useState<'clear' | 'latest'>();
 	const [actionMessage, setActionMessage] = useState<UniversalMessage>();
+	const [showOptions, setShowOptions] = useState(false);
+	const [viewer, setViewer] = useState<{ message: UniversalMessage; index: number }>();
 	const [replying, setReplying] = useState<UniversalMessage>();
 	const timelineRef = useRef<HTMLElement>(null);
 	const inputRef = useRef<HTMLInputElement>(null);
@@ -355,6 +362,12 @@ export function ChatRoom({ conversation, onBack }: Props) {
 		if (message) setActionMessage(message);
 	};
 
+	const openMedia = (message: UniversalMessage, index = 0) => {
+		if (message.attachments.some((attachment) => attachment.kind === 'image' || attachment.kind === 'video')) {
+			setViewer({ message, index });
+		}
+	};
+
 	const closeMessageActions = () => {
 		const messageId = actionMessage?.id;
 		setActionMessage(undefined);
@@ -376,26 +389,53 @@ export function ChatRoom({ conversation, onBack }: Props) {
 		setActionMessage(undefined);
 	};
 
+	const updateConversation = (update: { archived?: boolean; favourite?: boolean; expiration?: number }) => {
+		void service.updateConversation(conversation, update)
+			.then(() => {
+				setShowOptions(false);
+				void load();
+			})
+			.catch((reason) => setError(reason instanceof Error ? reason.message : 'Unable to update chat'));
+	};
+
 	useEffect(() => {
 		if (!actionMessage) return;
 		window.requestAnimationFrame(() => focus('message-action-reply'));
 	}, [actionMessage?.id, focus]);
 
+	useEffect(() => {
+		if (!showOptions) return;
+		window.requestAnimationFrame(() => focus('chat-option-archive'));
+	}, [focus, showOptions]);
+
+	useEffect(() => {
+		if (!viewer) return;
+		window.requestAnimationFrame(() => focus('viewer-zoom'));
+	}, [focus, viewer?.message.id, viewer?.index]);
+
 	useSoftkeys({
-		left: actionMessage ? undefined : selectedMessageId ? { label: 'Message', onPress: openMessageActions } : undefined,
-		center: actionMessage
+		left: actionMessage || showOptions ? undefined : selectedMessageId ? { label: 'Message', onPress: openMessageActions } : { label: 'Options', onPress: () => setShowOptions(true) },
+		center: viewer
 			? { label: 'Select', onPress: activate }
+			: actionMessage
+			? { label: 'Select', onPress: activate }
+			: showOptions
+				? { label: 'Select', onPress: activate }
 			: {
 				label: composeControl === 'clear' ? 'Clear' : composeControl === 'latest' ? 'Latest' : composerFocused ? 'Type' : selectedMessageId ? 'Open' : 'Type',
 				onPress: () => {
 					if (composeControl) activate();
 					else if (composerFocused) inputRef.current?.focus();
-					else if (selectedMessageId) openMessageActions();
+					else if (selectedMessageId) {
+						const message = page?.messages.find((candidate) => candidate.id === selectedMessageId);
+						if (message?.attachments.some((attachment) => attachment.kind === 'image' || attachment.kind === 'video')) openMedia(message);
+						else openMessageActions();
+					}
 					else inputRef.current?.focus();
 				},
 			},
-		right: { label: 'Back', onPress: actionMessage ? closeMessageActions : onBack },
-	}, [actionMessage, composeControl, composerFocused, onBack, selectedMessageId, activate]);
+		right: { label: 'Back', onPress: viewer ? () => setViewer(undefined) : actionMessage ? closeMessageActions : showOptions ? () => setShowOptions(false) : onBack },
+	}, [actionMessage, composeControl, composerFocused, onBack, selectedMessageId, activate, showOptions, viewer]);
 
 	let currentDay = '';
 	let unreadShown = false;
@@ -407,6 +447,33 @@ export function ChatRoom({ conversation, onBack }: Props) {
 				message={actionMessage}
 				onReply={replyToMessage}
 				onReact={reactToMessage}
+			/>
+		);
+	}
+
+	if (viewer) {
+		const media = viewer.message.attachments.filter((attachment) => attachment.kind === 'image' || attachment.kind === 'video');
+		const attachment = media[viewer.index];
+		if (attachment) {
+			return (
+				<MediaViewer
+					message={viewer.message}
+					attachment={attachment}
+					index={viewer.index}
+					onBack={() => setViewer(undefined)}
+					onChange={(direction) => setViewer((current) => current ? { ...current, index: (current.index + direction + media.length) % media.length } : current)}
+				/>
+			);
+		}
+	}
+
+	if (showOptions) {
+		return (
+			<ChatOptions
+				conversation={conversation}
+				onArchive={() => updateConversation({ archived: !conversation.isArchived })}
+				onFavourite={() => updateConversation({ favourite: !conversation.isFavourite })}
+				onExpiration={(expiration) => updateConversation({ expiration })}
 			/>
 		);
 	}
@@ -462,6 +529,7 @@ export function ChatRoom({ conversation, onBack }: Props) {
 								message={message}
 								showTime={showTime}
 								groupStart={groupStart}
+								onOpenMedia={() => openMedia(message)}
 								onFocus={() => {
 									pendingFocus.current = message.id;
 									setSelectedMessageId(message.id);

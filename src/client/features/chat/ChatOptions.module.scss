@@ -1,0 +1,7 @@
+@use '../../styles/tokens';
+
+.screen { height: 100%; overflow: auto; background: tokens.$background; }
+.screen header { height: 29px; padding: 7px 9px; background: linear-gradient(135deg, #15342a, #10201b 70%); font-size: 12px; font-weight: 700; }
+.list { padding: 5px 7px 10px; }
+.heading { margin: 9px 2px 4px; color: tokens.$muted; font-size: 10px; font-weight: 800; text-transform: uppercase; }
+.action { display: block; width: 100%; min-height: 33px; margin: 3px 0; padding: 6px 8px; background: #173028; border: 1px solid #2d4c41; border-radius: 6px; color: tokens.$text; text-align: left; }

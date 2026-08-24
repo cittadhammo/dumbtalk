@@ -13,10 +13,34 @@ export type AttachmentKind = 'image' | 'video' | 'audio' | 'file';
 export type UniversalAttachment = {
 	id: string;
 	kind: AttachmentKind;
+	path?: string;
 	contentType?: string;
 	caption?: string;
 	width?: number;
 	height?: number;
+};
+
+export type UniversalQuote = {
+	author: string;
+	text?: string;
+};
+
+export type UniversalPoll = {
+	question: string;
+	options: { index: number; text: string; votes: string[] }[];
+	multiple: boolean;
+	closed: boolean;
+};
+
+export type ServiceCapabilities = {
+	reactions: boolean;
+	edits: boolean;
+	deletes: boolean;
+	pins: boolean;
+	polls: boolean;
+	voiceNotes: boolean;
+	viewOnce: boolean;
+	groups: boolean;
 };
 
 export type UniversalReceipt = {
@@ -41,6 +65,12 @@ export type UniversalMessage = {
 	attachments: UniversalAttachment[];
 	reactions: UniversalReaction[];
 	receipt?: UniversalReceipt;
+	quote?: UniversalQuote;
+	edited?: boolean;
+	deleted?: boolean;
+	pinned?: boolean;
+	poll?: UniversalPoll;
+	viewOnce?: { opened: boolean };
 };
 
 export type UniversalConversation = {
@@ -80,4 +110,9 @@ export type MessagingService = {
 	setTyping: (conversation: UniversalConversation, active: boolean) => Promise<void>;
 	sendText: (conversation: UniversalConversation, text: string, replyTo?: UniversalMessage) => Promise<UniversalMessage>;
 	react: (conversation: UniversalConversation, message: UniversalMessage, emoji: string) => Promise<void>;
+	updateConversation: (conversation: UniversalConversation, update: { archived?: boolean; favourite?: boolean; expiration?: number }) => Promise<void>;
+	editMessage: (conversation: UniversalConversation, message: UniversalMessage, text: string) => Promise<void>;
+	deleteMessage: (conversation: UniversalConversation, message: UniversalMessage) => Promise<void>;
+	pinMessage: (conversation: UniversalConversation, message: UniversalMessage, pinned: boolean) => Promise<void>;
+	capabilities: () => Promise<ServiceCapabilities>;
 };

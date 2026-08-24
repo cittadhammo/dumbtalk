@@ -3,6 +3,7 @@ import type {
 	ConversationPage,
 	MessagePage,
 	MessagingService,
+	ServiceCapabilities,
 	ServiceStatus,
 	UniversalConversation,
 	UniversalMessage,
@@ -24,6 +25,13 @@ type SignalMessage = {
 	attachments?: { id?: string; contentType?: string; caption?: string; width?: number; height?: number }[];
 	reactions?: { emoji: string; author?: string; own?: boolean }[];
 	status?: 'sent' | 'delivered' | 'read';
+	quote?: { author?: string; text?: string };
+	edited?: boolean;
+	deleted?: boolean;
+	pinned?: boolean;
+	poll?: { question: string; options: { index: number; text: string; votes: string[] }[]; multiple?: boolean; closed?: boolean };
+	viewOnce?: boolean;
+	viewOnceOpened?: boolean;
 };
 
 type SignalConversation = {
@@ -69,6 +77,7 @@ function toUniversalMessage(message: SignalMessage): UniversalMessage {
 		text: message.text,
 		attachments: (message.attachments ?? []).map((attachment, index) => ({
 			id: attachment.id ?? String(index),
+			path: `/api/attachment/${encodeURIComponent(message.id)}/${index}`,
 			kind: attachmentKind(attachment.contentType),
 			contentType: attachment.contentType,
 			caption: attachment.caption,
@@ -81,6 +90,12 @@ function toUniversalMessage(message: SignalMessage): UniversalMessage {
 			isOwn: Boolean(reaction.own),
 		})),
 		receipt: message.direction === 'out' ? { state: message.status ?? 'sent' } : undefined,
+		quote: message.quote?.author ? { author: message.quote.author, text: message.quote.text } : undefined,
+		edited: message.edited,
+		deleted: message.deleted,
+		pinned: message.pinned,
+		poll: message.poll ? { ...message.poll, multiple: Boolean(message.poll.multiple), closed: Boolean(message.poll.closed) } : undefined,
+		viewOnce: message.viewOnce ? { opened: Boolean(message.viewOnceOpened) } : undefined,
 	};
 }
 
@@ -179,5 +194,47 @@ export const signalService: MessagingService = {
 				emoji,
 			}),
 		});
+	},
+
+	async updateConversation(conversation, update): Promise<void> {
+		if (update.archived !== undefined) {
+			await api('/api/conversation/archive', { method: 'POST', body: JSON.stringify({ conversationId: conversation.remoteId, archived: update.archived }) });
+		}
+		if (update.favourite !== undefined) {
+			await api('/api/conversation/favorite', { method: 'POST', body: JSON.stringify({ conversationId: conversation.remoteId, favorite: update.favourite }) });
+		}
+		if (update.expiration !== undefined) {
+			const [, target] = conversation.remoteId.split(/:(.*)/s);
+			await api('/api/conversation/expiration', { method: 'POST', body: JSON.stringify({ kind: conversation.kind, target, expiration: update.expiration }) });
+		}
+	},
+
+	async editMessage(conversation, message, text): Promise<void> {
+		const [, target] = conversation.remoteId.split(/:(.*)/s);
+		await api('/api/message/edit', { method: 'POST', body: JSON.stringify({ kind: conversation.kind, target, timestamp: message.sentAt, message: text }) });
+	},
+
+	async deleteMessage(conversation, message): Promise<void> {
+		const [, target] = conversation.remoteId.split(/:(.*)/s);
+		await api('/api/message/delete', { method: 'POST', body: JSON.stringify({ kind: conversation.kind, target, timestamp: message.sentAt }) });
+	},
+
+	async pinMessage(conversation, message, pinned): Promise<void> {
+		const [, target] = conversation.remoteId.split(/:(.*)/s);
+		await api('/api/message/pin', { method: 'POST', body: JSON.stringify({ kind: conversation.kind, target, timestamp: message.sentAt, pinned }) });
+	},
+
+	async capabilities(): Promise<ServiceCapabilities> {
+		const response = await api<{ capabilities?: Partial<ServiceCapabilities> }>('/api/status');
+		return {
+			reactions: true,
+			edits: true,
+			deletes: true,
+			pins: Boolean(response.capabilities?.pins),
+			polls: Boolean(response.capabilities?.polls),
+			voiceNotes: Boolean(response.capabilities?.voiceNotes),
+			viewOnce: true,
+			groups: true,
+		};
 	},
 };

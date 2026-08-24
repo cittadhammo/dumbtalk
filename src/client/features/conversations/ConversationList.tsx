@@ -35,7 +35,15 @@ function messageSummary(message?: UniversalMessage) {
 }
 
 function preview(conversation: UniversalConversation) {
-	if (conversation.typingNames.length) return <span class={styles.typing}>{conversation.typingNames.join(', ')} typing…</span>;
+	if (conversation.typingNames.length) {
+		const names = conversation.typingNames.map((name) => firstName(name) ?? name).join(', ');
+		return (
+			<span class={styles.typing} aria-label={`${names} typing`}>
+				<span class={styles.typingDots} aria-hidden="true"><i /><i /><i /></span>
+				{names} typing
+			</span>
+		);
+	}
 	const message = conversation.lastMessage;
 	const sender = message?.direction === 'outgoing'
 		? 'You'
