@@ -142,6 +142,18 @@ export const signalService: MessagingService = {
 		});
 	},
 
+	async setTyping(conversation, active): Promise<void> {
+		const [, target] = conversation.remoteId.split(/:(.*)/s);
+		await api('/api/typing', {
+			method: 'POST',
+			body: JSON.stringify({
+				kind: conversation.kind,
+				target,
+				stop: !active,
+			}),
+		});
+	},
+
 	async sendText(conversation, text, replyTo): Promise<UniversalMessage> {
 		const [, target] = conversation.remoteId.split(/:(.*)/s);
 		const response = await api<{ message: SignalMessage }>('/api/send', {

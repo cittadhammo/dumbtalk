@@ -77,5 +77,6 @@ export type MessagingService = {
 	listConversations: (options: { archived: boolean }) => Promise<ConversationPage>;
 	listMessages: (conversation: UniversalConversation, options?: { before?: number }) => Promise<MessagePage>;
 	markRead: (conversation: UniversalConversation) => Promise<void>;
+	setTyping: (conversation: UniversalConversation, active: boolean) => Promise<void>;
 	sendText: (conversation: UniversalConversation, text: string, replyTo?: UniversalMessage) => Promise<UniversalMessage>;
 };

@@ -1,0 +1,263 @@
+@use '../../styles/tokens';
+
+.room {
+	display: grid;
+	height: 100%;
+	min-height: 0;
+	grid-template-rows: 29px minmax(0, 1fr) auto;
+	background: tokens.$background;
+}
+
+.header {
+	display: flex;
+	min-width: 0;
+	align-items: center;
+	padding: 6px 9px;
+	background: linear-gradient(135deg, #15342a, #10201b 70%);
+	border-bottom: 1px solid tokens.$line;
+	box-shadow: 0 2px 6px #0005;
+	font-size: 13px;
+	font-weight: 700;
+}
+
+.title {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.service {
+	margin-left: auto;
+	padding: 1px 4px;
+	background: #29483e;
+	border: 1px solid #456357;
+	border-radius: 7px;
+	color: #bad0c7;
+	font-size: 8px;
+	text-transform: uppercase;
+}
+
+.timeline {
+	min-height: 0;
+	overflow-y: auto;
+	padding: 4px 6px;
+	scrollbar-width: none;
+}
+
+.timeline::-webkit-scrollbar {
+	display: none;
+}
+
+.loadOlder {
+	display: block;
+	margin: 1px auto 7px;
+	padding: 4px 9px;
+	background: #14251f;
+	border: 1px solid #34594d;
+	border-radius: 12px;
+	color: #b9cbc4;
+	font-size: 10px;
+}
+
+.dateSeparator,
+.unreadMarker {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	margin: 8px 0 5px;
+	color: #91a79e;
+	font-size: 10px;
+}
+
+.dateSeparator::before,
+.dateSeparator::after,
+.unreadMarker::before,
+.unreadMarker::after {
+	flex: 1;
+	height: 1px;
+	background: #294039;
+	content: '';
+}
+
+.dateSeparator span {
+	padding: 2px 7px;
+	background: #14251f;
+	border-radius: 9px;
+}
+
+.unreadMarker {
+	color: #8db6ff;
+	font-weight: 700;
+}
+
+.unreadMarker::before,
+.unreadMarker::after {
+	background: #4d78c5;
+}
+
+.bubble {
+	display: block;
+	max-width: 88%;
+	margin: 3px 0;
+	padding: 5px 7px;
+	border: 0;
+	border-radius: 8px;
+	background: #233a32;
+	box-shadow: 0 2px 5px #0005;
+	color: tokens.$text;
+	font-size: 13px;
+	line-height: 1.16;
+	overflow-wrap: anywhere;
+	text-align: left;
+}
+
+.outgoing {
+	margin-left: auto;
+	background: #2454a7;
+}
+
+.system {
+	max-width: 90%;
+	margin: 8px auto;
+	padding: 4px 8px;
+	background: #182a24;
+	border-radius: 10px;
+	color: #b7c7c0;
+	font-size: 11px;
+	text-align: center;
+}
+
+.sender {
+	display: block;
+	margin-bottom: 2px;
+	color: #9fc4ff;
+	font-size: 11px;
+}
+
+.attachment {
+	display: block;
+	margin: 3px 0;
+	color: #d8e4df;
+	font-size: 12px;
+}
+
+.reactions {
+	display: block;
+	width: max-content;
+	margin-top: 2px;
+	padding: 1px 4px;
+	background: #10201b;
+	border-radius: 10px;
+	font-size: 12px;
+}
+
+.time {
+	display: block;
+	color: #c0cec8;
+	font-size: 10px;
+	text-align: right;
+}
+
+.receipt {
+	display: inline-grid;
+	width: 14px;
+	height: 14px;
+	place-items: center;
+	margin-left: 2px;
+	border: 1px solid white;
+	border-radius: 50%;
+	color: white;
+	font-size: 8px;
+}
+
+.delivered {
+	letter-spacing: -2px;
+}
+
+.read {
+	background: white;
+	color: #2454a7;
+	letter-spacing: -2px;
+}
+
+.typing {
+	display: flex;
+	width: max-content;
+	gap: 3px;
+	margin: 5px 0 2px 5px;
+	padding: 5px 8px;
+	background: #233a32;
+	border-radius: 13px;
+	box-shadow: 0 2px 5px #0006;
+}
+
+.typing span {
+	width: 4px;
+	height: 4px;
+	background: #c5d7d0;
+	border-radius: 50%;
+	animation: bounce 0.9s infinite ease-in-out;
+}
+
+.typing span:nth-child(2) {
+	animation-delay: 0.15s;
+}
+
+.typing span:nth-child(3) {
+	animation-delay: 0.3s;
+}
+
+@keyframes bounce {
+	0%, 60%, 100% {
+		opacity: 0.45;
+		transform: translateY(0);
+	}
+
+	30% {
+		opacity: 1;
+		transform: translateY(-4px);
+	}
+}
+
+.compose {
+	display: flex;
+	padding: 2px;
+	background: #10201b;
+	border-top: 1px solid tokens.$line;
+	box-shadow: 0 -3px 8px #0005;
+}
+
+.compose input {
+	min-width: 0;
+	height: 28px;
+	flex: 1;
+	padding: 4px 6px;
+	background: #07100d;
+	border: 1px solid tokens.$line;
+	color: tokens.$text;
+	font-size: 13px;
+}
+
+.compose input:focus {
+	outline: 2px solid tokens.$focus;
+	outline-offset: -2px;
+}
+
+.compose button {
+	width: 32px;
+	border: 0;
+	background: tokens.$blue;
+	color: white;
+	font-size: 13px;
+}
+
+.empty,
+.error {
+	padding: 24px 12px;
+	color: tokens.$muted;
+	text-align: center;
+}
+
+.error {
+	color: #ff9399;
+}
