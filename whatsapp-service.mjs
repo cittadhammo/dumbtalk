@@ -178,11 +178,11 @@ export class WhatsAppService {
     this.lastError = null;
     this.qr = null;
 
-    const process = spawn(WACLI, ["--store", this.dataDir, "--events", "auth", "--qr-format", "text", "--download-media"], {
+    const child = spawn(WACLI, ["--store", this.dataDir, "--events", "auth", "--qr-format", "text", "--download-media"], {
       env: { ...process.env, WACLI_STORE_DIR: this.dataDir },
       stdio: ["ignore", "pipe", "pipe"],
     });
-    this.authProcess = process;
+    this.authProcess = child;
     let output = "";
     const consume = async chunk => {
       output += chunk.toString();
@@ -200,20 +200,20 @@ export class WhatsAppService {
         this.qr = { url: code, image: await QRCode.toDataURL(code, { margin: 1, width: 240 }) };
       }
     };
-    process.stdout.on("data", chunk => void consume(chunk));
-    process.stderr.on("data", chunk => {
+    child.stdout.on("data", chunk => void consume(chunk));
+    child.stderr.on("data", chunk => {
       void consume(chunk);
       const text = chunk.toString().trim();
       if (text) this.log("wacli auth", text);
     });
-    process.on("exit", async code => {
-      if (this.authProcess !== process) return;
+    child.on("exit", async code => {
+      if (this.authProcess !== child) return;
       this.authProcess = null;
       await this.refreshStatus();
       if (code && !this.isLinked()) this.lastError = "WhatsApp linking did not complete";
       if (this.isLinked()) this.startSync();
     });
-    for (let attempt = 0; attempt < 60 && !this.qr && this.authProcess === process; attempt++) await delay(100);
+    for (let attempt = 0; attempt < 60 && !this.qr && this.authProcess === child; attempt++) await delay(100);
     if (!this.qr) throw new Error(this.lastError || "WhatsApp did not provide a QR code");
     return this.statusPayload();
   }
@@ -227,19 +227,19 @@ export class WhatsAppService {
 
   startSync() {
     if (this.syncProcess || !this.isLinked()) return;
-    const process = spawn(WACLI, ["--store", this.dataDir, "--events", "sync", "--follow", "--download-media", "--presence-mode", "quiet", "--webhook", "http://127.0.0.1:8080/internal/wacli/webhook", "--webhook-secret", this.webhookSecret, "--webhook-allow-private", "--webhook-events", "message,receipt,chat_presence", "--max-messages", process.env.WACLI_SYNC_MAX_MESSAGES || "50000", "--max-db-size", process.env.WACLI_SYNC_MAX_DB_SIZE || "1GB"], {
+    const child = spawn(WACLI, ["--store", this.dataDir, "--events", "sync", "--follow", "--download-media", "--presence-mode", "quiet", "--webhook", "http://127.0.0.1:8080/internal/wacli/webhook", "--webhook-secret", this.webhookSecret, "--webhook-allow-private", "--webhook-events", "message,receipt,chat_presence", "--max-messages", process.env.WACLI_SYNC_MAX_MESSAGES || "50000", "--max-db-size", process.env.WACLI_SYNC_MAX_DB_SIZE || "1GB"], {
       env: { ...process.env, WACLI_STORE_DIR: this.dataDir },
       stdio: ["ignore", "ignore", "pipe"],
     });
-    this.syncProcess = process;
-    process.stderr.on("data", chunk => {
+    this.syncProcess = child;
+    child.stderr.on("data", chunk => {
       const text = chunk.toString().trim();
       if (text) this.log("wacli sync", text);
       this.dialogCache.at = 0;
       this.messageCache.clear();
     });
-    process.on("exit", code => {
-      if (this.syncProcess !== process) return;
+    child.on("exit", code => {
+      if (this.syncProcess !== child) return;
       this.syncProcess = null;
       if (code && this.isLinked()) setTimeout(() => this.startSync(), 5_000).unref();
     });
