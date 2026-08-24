@@ -7,6 +7,7 @@ export type FocusRegistration = {
 	id: string;
 	grid?: string;
 	columns?: number;
+	vertical?: boolean;
 	initial?: boolean;
 	onArrow?: (key: ArrowKey) => boolean;
 };
@@ -88,6 +89,7 @@ export function FocusProvider({ children }: { children: ComponentChildren }) {
 				.filter((item) => item.element.isConnected && item.element.offsetParent !== null)
 				.sort(documentOrder);
 			if (!all.length) return;
+			const vertical = all.filter((item) => item.vertical !== false);
 
 			const index = active ? all.indexOf(active) : 0;
 			if (active?.grid) {
@@ -123,7 +125,8 @@ export function FocusProvider({ children }: { children: ComponentChildren }) {
 			if (arrow === 'ArrowUp' || arrow === 'ArrowDown') {
 				event.preventDefault();
 				const offset = arrow === 'ArrowUp' ? -1 : 1;
-				focus(all[(index + offset + all.length) % all.length].id);
+				const verticalIndex = active ? vertical.indexOf(active) : 0;
+				focus(vertical[(verticalIndex + offset + vertical.length) % vertical.length].id);
 			}
 		};
 

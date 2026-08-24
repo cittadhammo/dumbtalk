@@ -66,15 +66,22 @@
 .viewer {
 	display: grid;
 	height: 100%;
-	grid-template-rows: 29px minmax(0, 1fr) auto auto;
+	grid-template-rows: 29px minmax(0, 1fr);
 	background: #030705;
 }
 
 .viewer header {
+	display: flex;
+	justify-content: space-between;
 	padding: 7px 9px;
 	background: #10201b;
 	font-size: 12px;
 	font-weight: 700;
+}
+
+.viewer header span {
+	color: tokens.$muted;
+	font-size: 9px;
 }
 
 .viewerBody {
@@ -87,7 +94,10 @@
 
 .viewerBody img,
 .viewerBody video {
-	width: 100%;
+	display: block;
+	width: auto;
+	height: auto;
+	max-width: 100%;
 	max-height: 100%;
 	object-fit: contain;
 }
@@ -98,25 +108,4 @@
 	max-width: none;
 	max-height: none;
 	object-fit: initial;
-}
-
-.viewerControls {
-	display: flex;
-	justify-content: center;
-	gap: 4px;
-	padding: 5px;
-}
-
-.viewerControls button,
-.back {
-	min-width: 35px;
-	padding: 4px 8px;
-	background: #244a7e;
-	border: 1px solid #638cce;
-	border-radius: 5px;
-	color: white;
-}
-
-.back {
-	margin: 0 6px 6px;
 }

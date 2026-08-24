@@ -30,6 +30,16 @@
 	text-transform: uppercase;
 }
 
+.dropdown {
+	display: grid;
+	gap: 4px;
+	margin: -2px 5px 4px;
+	padding: 5px;
+	background: #0c1b16;
+	border: 1px solid #29483e;
+	border-radius: 0 0 7px 7px;
+}
+
 .action,
 .primary,
 .danger,
@@ -97,6 +107,118 @@
 	font-size: 9px;
 }
 
+.member span {
+	min-width: 0;
+	overflow: hidden;
+	color: tokens.$text;
+	font-size: 10px;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
 .error {
 	color: #ff9399;
+}
+
+.voiceComposer {
+	position: absolute;
+	right: 43px;
+	bottom: 35px;
+	left: 4px;
+	z-index: 8;
+	display: grid;
+	gap: 3px;
+	padding: 5px;
+	background: #10201bf2;
+	border: 1px solid #456357;
+	border-radius: 8px;
+	box-shadow: 0 4px 14px #000b;
+}
+
+.voiceControl {
+	min-height: 28px;
+	padding: 4px 7px;
+	background: #214b3b;
+	border: 1px solid #5a8b78;
+	border-radius: 6px;
+	color: white;
+	text-align: left;
+}
+
+.voiceComposer small {
+	color: tokens.$muted;
+	font-size: 9px;
+}
+
+.voiceComposer audio {
+	display: none;
+}
+
+.hiddenCapture {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	opacity: 0;
+	pointer-events: none;
+}
+
+.pinnedOverlay {
+	position: absolute;
+	top: 34px;
+	right: 7px;
+	bottom: 39px;
+	left: 7px;
+	z-index: 7;
+	display: grid;
+	min-height: 0;
+	grid-template-rows: auto minmax(0, 1fr) auto;
+	background: #0b1713ee;
+	border: 1px solid #456357;
+	border-radius: 9px;
+	box-shadow: 0 5px 18px #000d;
+	backdrop-filter: blur(5px);
+}
+
+.pinnedOverlay header,
+.pinnedOverlay footer {
+	padding: 6px 8px;
+	color: tokens.$muted;
+	font-size: 10px;
+}
+
+.pinnedList {
+	display: flex;
+	min-height: 0;
+	flex-direction: column;
+	gap: 4px;
+	padding: 4px 6px;
+	overflow-y: auto;
+}
+
+.pinnedBubble {
+	display: grid;
+	width: 88%;
+	gap: 2px;
+	padding: 5px 7px;
+	background: #233a32;
+	border: 1px solid transparent;
+	border-radius: 8px;
+	color: tokens.$text;
+	font-size: 11px;
+	text-align: left;
+}
+
+.pinnedBubble strong,
+.pinnedBubble time {
+	font-size: 9px;
+}
+
+.pinnedBubble time {
+	color: tokens.$muted;
+	text-align: right;
+}
+
+.pinnedOutgoing {
+	align-self: flex-end;
+	background: #2454a7;
 }

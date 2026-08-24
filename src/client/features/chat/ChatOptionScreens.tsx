@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { FocusButton } from '../../components/FocusButton';
 import { FocusInput } from '../../components/FocusInput';
+import { useSoftkeys } from '../../platform/Softkeys';
 import type { UniversalConversation, UniversalMessage } from '../../services/contracts';
 import styles from './ChatOptions.module.scss';
 
@@ -17,51 +18,33 @@ export function PinnedMessages({
 }) {
 	const pin = pins[index];
 	return (
-		<main class={styles.screen}>
-			<header>Pinned {pins.length ? `${index + 1} of ${pins.length}` : 'messages'}</header>
-			<section class={styles.panel}>
+		<aside class={styles.pinnedOverlay}>
+			<header>Pinned messages</header>
+			<section class={styles.pinnedList}>
 				{!pin && <p>No pinned messages</p>}
-				{pin && (
-					<>
-						<strong>{pin.direction === 'outgoing' ? 'You' : pin.sender}</strong>
-						<p>{pin.text || 'Media message'}</p>
-						<time>{new Date(pin.sentAt).toLocaleString()}</time>
-					</>
-				)}
-				<div class={styles.navigation}>
+				{pins.map((message, messageIndex) => (
 					<FocusButton
-						id="pin-previous"
-						grid="pinned-navigation"
-						columns={3}
+						id={`pin-${message.id}`}
+						grid="pinned-messages"
+						columns={1}
 						type="button"
-						autoFocus
-						onClick={() => onChange(-1)}
+						autoFocus={messageIndex === index}
+						class={`${styles.pinnedBubble} ${message.direction === 'outgoing' ? styles.pinnedOutgoing : ''}`}
+						onFocus={() => onChange(messageIndex - index)}
+						onArrow={(key) =>
+							(key === 'ArrowUp' && messageIndex === 0) ||
+							(key === 'ArrowDown' && messageIndex === pins.length - 1)
+						}
+						onClick={() => onJump(message)}
 					>
-						‹
+						<strong>{message.direction === 'outgoing' ? 'You' : message.sender}</strong>
+						<span>{message.text || (message.attachments.length ? 'Media message' : 'Message')}</span>
+						<time>{new Date(message.sentAt).toLocaleString()}</time>
 					</FocusButton>
-					{pin && (
-						<FocusButton
-							id="pin-jump"
-							grid="pinned-navigation"
-							columns={3}
-							type="button"
-							onClick={() => onJump(pin)}
-						>
-							Jump to message
-						</FocusButton>
-					)}
-					<FocusButton
-						id="pin-next"
-						grid="pinned-navigation"
-						columns={3}
-						type="button"
-						onClick={() => onChange(1)}
-					>
-						›
-					</FocusButton>
-				</div>
+				))}
 			</section>
-		</main>
+			<footer>{pins.length ? `${index + 1} of ${pins.length} · Centre jumps` : 'Back to close'}</footer>
+		</aside>
 	);
 }
 
@@ -124,7 +107,13 @@ export function PollComposer({
 	);
 }
 
-export function VoiceRecorder({ onSend }: { onSend: (blob: Blob) => Promise<void> }) {
+export function VoiceComposer({
+	onSend,
+	onClose,
+}: {
+	onSend: (blob: Blob) => Promise<void>;
+	onClose: () => void;
+}) {
 	const [recording, setRecording] = useState<Blob>();
 	const [active, setActive] = useState(false);
 	const [elapsed, setElapsed] = useState(0);
@@ -134,6 +123,8 @@ export function VoiceRecorder({ onSend }: { onSend: (blob: Blob) => Promise<void
 	const recorder = useRef<MediaRecorder>();
 	const stream = useRef<MediaStream>();
 	const timer = useRef<number>();
+	const fileInput = useRef<HTMLInputElement>(null);
+	const previewAudio = useRef<HTMLAudioElement>(null);
 	const cloudPhone = 'hasFeature' in navigator;
 	useEffect(
 		() => () => {
@@ -181,52 +172,63 @@ export function VoiceRecorder({ onSend }: { onSend: (blob: Blob) => Promise<void
 			setError(reason instanceof Error ? reason.message : 'Microphone unavailable');
 		}
 	};
+	const send = () => {
+		if (!recording || sending) return;
+		setSending(true);
+		void onSend(recording)
+			.then(onClose)
+			.catch((reason) => {
+				setError(reason instanceof Error ? reason.message : 'Voice note failed');
+				setSending(false);
+			});
+	};
+	useSoftkeys(
+		{
+			left: {
+				label: recording ? 'Preview' : active ? 'Stop' : 'Record',
+				onPress: () => {
+					if (recording) {
+						const audio = previewAudio.current;
+						if (!audio) return;
+						if (audio.paused) void audio.play();
+						else audio.pause();
+					} else if (cloudPhone) fileInput.current?.click();
+					else void toggleRecording();
+				},
+			},
+			center: recording ? { label: sending ? 'Sending' : 'Send', onPress: send } : undefined,
+			right: { label: 'Cancel', onPress: onClose },
+		},
+		[active, cloudPhone, onClose, recording, sending],
+	);
 	return (
-		<main class={styles.screen}>
-			<header>Voice note</header>
-			<section class={styles.panel}>
-				<p>Record with the phone, then preview and send.</p>
-				{cloudPhone ? (
-					<FocusInput
-						id="voice-capture"
-						autoFocus
-						type="file"
-						accept="audio/*"
-						capture="user"
-						onChange={(event) => choose(event.currentTarget.files?.[0])}
-					/>
-				) : (
-					<FocusButton
-						id="voice-toggle"
-						type="button"
-						autoFocus
-						class={styles.primary}
-						onClick={() => void toggleRecording()}
-					>
-						{active ? `Stop recording (${elapsed}s)` : 'Start recording'}
-					</FocusButton>
-				)}
-				{preview.current && <audio src={preview.current} controls />}
-				{recording && (
-					<FocusButton
-						id="voice-send"
-						type="button"
-						class={styles.primary}
-						disabled={sending}
-						onClick={() => {
-							setSending(true);
-							void onSend(recording).catch((reason) => {
-								setError(reason instanceof Error ? reason.message : 'Voice note failed');
-								setSending(false);
-							});
-						}}
-					>
-						{sending ? 'Sending…' : 'Send voice note'}
-					</FocusButton>
-				)}
-				{error && <p class={styles.error}>{error}</p>}
-			</section>
-		</main>
+		<aside class={styles.voiceComposer}>
+			<input
+				ref={fileInput}
+				class={styles.hiddenCapture}
+				type="file"
+				accept="audio/*"
+				capture={'microphone' as 'user'}
+				onChange={(event) => choose(event.currentTarget.files?.[0])}
+			/>
+			<FocusButton
+				id="voice-toggle"
+				type="button"
+				autoFocus
+				class={styles.voiceControl}
+				onArrow={() => true}
+				onClick={() =>
+					recording ? send() : cloudPhone ? fileInput.current?.click() : void toggleRecording()
+				}
+			>
+				{recording ? '● Ready' : active ? `■ Stop · ${elapsed}s` : '● Record voice note'}
+			</FocusButton>
+			{preview.current && <audio ref={previewAudio} src={preview.current} />}
+			{recording && (
+				<small>{Math.max(1, Math.round(recording.size / 1024))} KB · Left previews · Centre sends</small>
+			)}
+			{error && <small class={styles.error}>{error}</small>}
+		</aside>
 	);
 }
 

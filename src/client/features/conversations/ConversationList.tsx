@@ -91,10 +91,12 @@ function Avatar({ conversation }: { conversation: UniversalConversation }) {
 function ConversationRow({
 	conversation,
 	onOpen,
+	onFocus,
 	autoFocus,
 }: {
 	conversation: UniversalConversation;
 	onOpen: () => void;
+	onFocus: () => void;
 	autoFocus: boolean;
 }) {
 	return (
@@ -103,6 +105,7 @@ function ConversationRow({
 			type="button"
 			class={styles.row}
 			autoFocus={autoFocus}
+			onFocus={onFocus}
 			onClick={onOpen}
 		>
 			<Avatar conversation={conversation} />
@@ -129,14 +132,17 @@ function ConversationRow({
 }
 
 export function ConversationList({ onOpen, onServices, onArchived, archived = false }: Props) {
-	const { services } = useMessagingServices();
-	const { activate } = useFocusManager();
+	const { services, serviceFor } = useMessagingServices();
+	const { activate, focus } = useFocusManager();
 	const cachedPage = readConversationPage(archived);
 	const [conversations, setConversations] = useState<UniversalConversation[] | undefined>(
 		() => cachedPage?.conversations,
 	);
 	const [archivedCount, setArchivedCount] = useState(() => cachedPage?.archivedCount ?? 0);
 	const [error, setError] = useState<string>();
+	const [selectedId, setSelectedId] = useState<string>();
+	const [showMenu, setShowMenu] = useState(false);
+	const selected = conversations?.find((conversation) => conversation.id === selectedId);
 
 	useEffect(() => {
 		const cached = readConversationPage(archived);
@@ -172,14 +178,64 @@ export function ConversationList({ onOpen, onServices, onArchived, archived = fa
 
 	useSoftkeys(
 		{
-			left: { label: 'Services', onPress: onServices },
-			center: { label: 'Open', onPress: activate },
-			right: archived
-				? { label: 'Back', onPress: onArchived }
-				: { label: 'Exit', onPress: () => window.close() },
+			left: showMenu
+				? undefined
+				: { label: 'Menu', onPress: () => (selected ? setShowMenu(true) : onServices()) },
+			center: { label: showMenu ? 'Select' : 'Open', onPress: activate },
+			right: showMenu
+				? {
+						label: 'Back',
+						onPress: () => {
+							setShowMenu(false);
+							if (selectedId) window.requestAnimationFrame(() => focus(`conversation-${selectedId}`));
+						},
+					}
+				: archived
+					? { label: 'Back', onPress: onArchived }
+					: { label: 'Exit', onPress: () => window.close() },
 		},
-		[archived, activate, onArchived, onServices],
+		[archived, activate, focus, onArchived, onServices, selected, selectedId, showMenu],
 	);
+
+	const updateSelected = (update: { archived?: boolean; favourite?: boolean }) => {
+		if (!selected) return;
+		void serviceFor(selected.serviceId)
+			.updateConversation(selected, update)
+			.then(() => {
+				setShowMenu(false);
+				void load();
+			})
+			.catch((reason) => setError(reason instanceof Error ? reason.message : 'Unable to update chat'));
+	};
+
+	if (showMenu && selected) {
+		return (
+			<main>
+				<header class={styles.header}>Chat menu</header>
+				<section class={styles.menu}>
+					<strong>{selected.title}</strong>
+					<FocusButton
+						id="overview-favourite"
+						type="button"
+						autoFocus
+						onClick={() => updateSelected({ favourite: !selected.isFavourite })}
+					>
+						{selected.isFavourite ? '★ Remove favourite' : '☆ Favourite chat'}
+					</FocusButton>
+					<FocusButton
+						id="overview-archive"
+						type="button"
+						onClick={() => updateSelected({ archived: !selected.isArchived })}
+					>
+						{selected.isArchived ? 'Return to chats' : 'Archive chat'}
+					</FocusButton>
+					<FocusButton id="overview-services" type="button" onClick={onServices}>
+						Manage services
+					</FocusButton>
+				</section>
+			</main>
+		);
+	}
 
 	return (
 		<main>
@@ -203,6 +259,7 @@ export function ConversationList({ onOpen, onServices, onArchived, archived = fa
 						key={conversation.id}
 						conversation={conversation}
 						autoFocus={index === 0}
+						onFocus={() => setSelectedId(conversation.id)}
 						onOpen={() => onOpen(conversation)}
 					/>
 				))}

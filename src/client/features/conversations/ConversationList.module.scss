@@ -39,6 +39,29 @@
 	padding: 3px 0 8px;
 }
 
+.menu {
+	display: grid;
+	gap: 5px;
+	padding: 8px;
+}
+
+.menu strong {
+	padding: 4px 2px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.menu button {
+	min-height: 34px;
+	padding: 6px 8px;
+	background: linear-gradient(145deg, #1a3029, #13251f);
+	border: 1px solid #2c473e;
+	border-radius: 7px;
+	color: tokens.$text;
+	text-align: left;
+}
+
 .row {
 	display: flex;
 	width: calc(100% - 10px);

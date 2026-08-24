@@ -7,7 +7,7 @@ import {
 	PinnedMessages,
 	PollComposer,
 	SafetyNumber,
-	VoiceRecorder,
+	VoiceComposer,
 } from './ChatOptionScreens';
 import { MediaViewer } from './MessageMedia';
 import { attachmentLabel, MessageBubble } from './MessageBubble';
@@ -191,6 +191,28 @@ function MessageActions({
 		: ['👍', '❤️', '😂', '😮', '😢', '🙏'];
 	const [pollChoices, setPollChoices] = useState<number[]>([]);
 
+	if (expanded) {
+		return (
+			<main class={styles.actionScreen}>
+				<header class={styles.header}>Choose reaction</header>
+				<section class={styles.reactionPicker}>
+					{reactions.map((emoji) => (
+						<FocusButton
+							id={`message-all-reaction-${emoji}`}
+							grid="all-reactions"
+							columns={6}
+							type="button"
+							class={styles.reaction}
+							onClick={() => onReact(emoji)}
+						>
+							{emoji}
+						</FocusButton>
+					))}
+				</section>
+			</main>
+		);
+	}
+
 	return (
 		<main class={styles.actionScreen}>
 			<header class={styles.header}>Message</header>
@@ -247,44 +269,53 @@ function MessageActions({
 						class={styles.moreReactions}
 						onClick={onToggleExpanded}
 					>
-						{expanded ? 'Fewer reactions' : 'More reactions…'}
+						More reactions…
 					</FocusButton>
 				)}
-				{capabilities?.reactions !== false && expanded && (
-					<>
-						<p class={styles.actionHeading}>All reactions</p>
-						<div class={`${styles.reactionGrid} ${styles.expandedReactionGrid}`}>
-							{reactions.slice(6).map((emoji) => (
-								<FocusButton
-									id={`message-all-reaction-${emoji}`}
-									grid="all-reactions"
-									columns={6}
-									type="button"
-									class={styles.reaction}
-									onClick={() => onReact(emoji)}
-								>
-									{emoji}
-								</FocusButton>
-							))}
-						</div>
-					</>
-				)}
 				<div class={styles.actionTiles}>
-					<FocusButton id="message-action-reply" type="button" class={styles.action} onClick={onReply}>
+					<FocusButton
+						id="message-action-reply"
+						grid="message-actions"
+						columns={2}
+						type="button"
+						class={styles.action}
+						onClick={onReply}
+					>
 						↩ Reply
 					</FocusButton>
 					{capabilities?.pins !== false && (
-						<FocusButton id="message-action-pin" type="button" class={styles.action} onClick={onPin}>
+						<FocusButton
+							id="message-action-pin"
+							grid="message-actions"
+							columns={2}
+							type="button"
+							class={styles.action}
+							onClick={onPin}
+						>
 							⌖ {message.pinned ? 'Unpin' : 'Pin'}
 						</FocusButton>
 					)}
 					{capabilities?.edits !== false && message.direction === 'outgoing' && (
-						<FocusButton id="message-action-edit" type="button" class={styles.action} onClick={onEdit}>
+						<FocusButton
+							id="message-action-edit"
+							grid="message-actions"
+							columns={2}
+							type="button"
+							class={styles.action}
+							onClick={onEdit}
+						>
 							✎ Edit
 						</FocusButton>
 					)}
 					{capabilities?.deletes !== false && message.direction === 'outgoing' && (
-						<FocusButton id="message-action-delete" type="button" class={styles.action} onClick={onDelete}>
+						<FocusButton
+							id="message-action-delete"
+							grid="message-actions"
+							columns={2}
+							type="button"
+							class={styles.action}
+							onClick={onDelete}
+						>
 							⌫ Delete
 						</FocusButton>
 					)}
@@ -392,10 +423,11 @@ export function ChatRoom({ conversation, onBack }: Props) {
 	const [atBottom, setAtBottom] = useState(true);
 	const [selectedMessageId, setSelectedMessageId] = useState<string>();
 	const [composerFocused, setComposerFocused] = useState(false);
-	const [composeControl, setComposeControl] = useState<'clear' | 'latest' | 'send'>();
+	const [composeControl, setComposeControl] = useState<'voice' | 'clear' | 'latest' | 'send'>();
 	const [actionMessage, setActionMessage] = useState<UniversalMessage>();
 	const [showOptions, setShowOptions] = useState(false);
-	const [optionPanel, setOptionPanel] = useState<'pins' | 'poll' | 'voice' | 'group' | 'safety'>();
+	const [optionPanel, setOptionPanel] = useState<'pins' | 'poll' | 'group' | 'safety'>();
+	const [voiceOpen, setVoiceOpen] = useState(false);
 	const [safetyNumber, setSafetyNumber] = useState('Loading…');
 	const [pins, setPins] = useState<UniversalMessage[]>([]);
 	const [pinIndex, setPinIndex] = useState(0);
@@ -476,10 +508,10 @@ export function ChatRoom({ conversation, onBack }: Props) {
 	}, [conversation.id]);
 
 	useEffect(() => {
-		if (actionMessage || showOptions || optionPanel || viewer) return;
+		if (actionMessage || showOptions || optionPanel || viewer || voiceOpen) return;
 		const timer = window.setInterval(() => void load(), 2_500);
 		return () => window.clearInterval(timer);
-	}, [actionMessage, conversation.id, optionPanel, showOptions, viewer]);
+	}, [actionMessage, conversation.id, optionPanel, showOptions, viewer, voiceOpen]);
 
 	useEffect(() => {
 		const cached = readMessagePage(conversation.id);
@@ -713,6 +745,7 @@ export function ChatRoom({ conversation, onBack }: Props) {
 
 	const reactToMessage = (emoji: string) => {
 		if (!actionMessage) return;
+		const messageId = actionMessage.id;
 		const remove = actionMessage.reactions.some((reaction) => reaction.emoji === emoji && reaction.isOwn);
 		if (!remove) {
 			setReactionUsage((current) => {
@@ -726,6 +759,8 @@ export function ChatRoom({ conversation, onBack }: Props) {
 			.then(() => load())
 			.catch((reason) => setError(reason instanceof Error ? reason.message : 'Unable to react'));
 		setActionMessage(undefined);
+		setExpandedReactions(false);
+		window.requestAnimationFrame(() => focus(`message-${messageId}`));
 	};
 
 	const pinMessage = () => {
@@ -810,6 +845,7 @@ export function ChatRoom({ conversation, onBack }: Props) {
 			.then((messages) => {
 				setPins(messages);
 				setPinIndex(0);
+				setShowOptions(false);
 				setOptionPanel('pins');
 			})
 			.catch((reason) =>
@@ -870,29 +906,35 @@ export function ChatRoom({ conversation, onBack }: Props) {
 	useEffect(() => {
 		if (!actionMessage) return;
 		window.requestAnimationFrame(() =>
-			focus(capabilities?.reactions === false ? 'message-action-reply' : 'message-reaction-👍'),
+			focus(
+				expandedReactions
+					? 'message-all-reaction-👍'
+					: capabilities?.reactions === false
+						? 'message-action-reply'
+						: 'message-reaction-👍',
+			),
 		);
-	}, [actionMessage?.id, capabilities?.reactions, focus]);
+	}, [actionMessage?.id, capabilities?.reactions, expandedReactions, focus]);
 
 	useEffect(() => {
 		if (!showOptions || optionPanel) return;
-		const first = capabilities?.voiceNotes
-			? 'chat-option-voice'
-			: capabilities?.polls
-				? 'chat-option-poll'
-				: capabilities?.pins
-					? 'chat-option-pins'
-					: 'chat-option-archive';
+		const first = capabilities?.polls
+			? 'chat-option-poll'
+			: capabilities?.pins
+				? 'chat-option-pins'
+				: currentConversation.kind === 'group'
+					? 'chat-option-group'
+					: capabilities?.identities && !currentConversation.isNoteToSelf
+						? 'chat-option-safety'
+						: capabilities?.blocking && !currentConversation.isNoteToSelf
+							? 'chat-option-block'
+							: 'chat-option-expiration';
 		window.requestAnimationFrame(() => focus(first));
 	}, [capabilities, focus, optionPanel, showOptions]);
 
 	useEffect(() => {
-		if (!viewer) return;
-		const attachment = viewer.message.attachments.filter(
-			(item) => item.kind === 'image' || item.kind === 'video',
-		)[viewer.index];
-		window.requestAnimationFrame(() => focus(attachment?.kind === 'image' ? 'viewer-zoom' : 'viewer-back'));
-	}, [focus, viewer?.message.id, viewer?.index]);
+		if (voiceOpen) window.requestAnimationFrame(() => focus('voice-toggle'));
+	}, [focus, voiceOpen]);
 
 	useSoftkeys(
 		{
@@ -906,38 +948,50 @@ export function ChatRoom({ conversation, onBack }: Props) {
 				? { label: 'Select', onPress: activate }
 				: actionMessage
 					? { label: 'Select', onPress: activate }
-					: showOptions || optionPanel
-						? { label: 'Select', onPress: activate }
-						: {
-								label:
-									composeControl === 'clear'
-										? 'Clear'
-										: composeControl === 'latest'
-											? 'Latest'
-											: composeControl === 'send'
-												? editing
-													? 'Save'
-													: 'Send'
-												: composerFocused
-													? 'Type'
-													: selectedMessageId
-														? 'Open'
-														: 'Type',
+					: optionPanel === 'pins'
+						? {
+								label: 'Jump',
 								onPress: () => {
-									if (composeControl) activate();
-									else if (composerFocused) inputRef.current?.focus();
-									else if (selectedMessageId) {
-										const message = page?.messages.find((candidate) => candidate.id === selectedMessageId);
-										if (message) activateMessage(message);
-									} else inputRef.current?.focus();
+									const pin = pins[pinIndex];
+									if (pin) jumpToPinnedMessage(pin);
 								},
-							},
+							}
+						: showOptions || optionPanel
+							? { label: 'Select', onPress: activate }
+							: {
+									label:
+										composeControl === 'voice'
+											? 'Record'
+											: composeControl === 'clear'
+												? 'Clear'
+												: composeControl === 'latest'
+													? 'Latest'
+													: composeControl === 'send'
+														? editing
+															? 'Save'
+															: 'Send'
+														: composerFocused
+															? 'Type'
+															: selectedMessageId
+																? 'Open'
+																: 'Type',
+									onPress: () => {
+										if (composeControl) activate();
+										else if (composerFocused) inputRef.current?.focus();
+										else if (selectedMessageId) {
+											const message = page?.messages.find((candidate) => candidate.id === selectedMessageId);
+											if (message) activateMessage(message);
+										} else inputRef.current?.focus();
+									},
+								},
 			right: {
 				label: 'Back',
 				onPress: viewer
 					? closeViewer
 					: actionMessage
-						? closeMessageActions
+						? expandedReactions
+							? () => setExpandedReactions(false)
+							: closeMessageActions
 						: optionPanel
 							? () => setOptionPanel(undefined)
 							: showOptions
@@ -947,11 +1001,14 @@ export function ChatRoom({ conversation, onBack }: Props) {
 		},
 		[
 			actionMessage,
+			expandedReactions,
 			composeControl,
 			composerFocused,
 			editing,
 			onBack,
 			page,
+			pinIndex,
+			pins,
 			selectedMessageId,
 			activate,
 			optionPanel,
@@ -1011,19 +1068,6 @@ export function ChatRoom({ conversation, onBack }: Props) {
 		}
 	}
 
-	if (optionPanel === 'pins') {
-		return (
-			<PinnedMessages
-				pins={pins}
-				index={pinIndex}
-				onChange={(direction) =>
-					setPinIndex((current) => (pins.length ? (current + direction + pins.length) % pins.length : 0))
-				}
-				onJump={jumpToPinnedMessage}
-			/>
-		);
-	}
-
 	if (optionPanel === 'poll') {
 		return (
 			<PollComposer
@@ -1032,17 +1076,6 @@ export function ChatRoom({ conversation, onBack }: Props) {
 						.createPoll(conversation, question, options, multiple)
 						.then(refreshAfterOption)
 						.catch((reason) => setError(reason instanceof Error ? reason.message : 'Unable to create poll'));
-				}}
-			/>
-		);
-	}
-
-	if (optionPanel === 'voice') {
-		return (
-			<VoiceRecorder
-				onSend={async (recording) => {
-					await service.sendVoiceNote(conversation, recording);
-					refreshAfterOption();
 				}}
 			/>
 		);
@@ -1090,10 +1123,7 @@ export function ChatRoom({ conversation, onBack }: Props) {
 			<ChatOptions
 				conversation={currentConversation}
 				capabilities={capabilities}
-				onArchive={() => updateConversation({ archived: !currentConversation.isArchived })}
-				onFavourite={() => updateConversation({ favourite: !currentConversation.isFavourite })}
 				onExpiration={(expiration) => updateConversation({ expiration })}
-				onVoice={() => setOptionPanel('voice')}
 				onPoll={() => setOptionPanel('poll')}
 				onPins={openPins}
 				onGroup={openGroupSettings}
@@ -1135,7 +1165,11 @@ export function ChatRoom({ conversation, onBack }: Props) {
 				<span class={styles.title}>{conversation.title}</span>
 				<span class={styles.service}>{conversation.serviceId}</span>
 			</header>
-			<section class={styles.timeline} ref={timelineRef} onScroll={markReadAtBottom}>
+			<section
+				class={`${styles.timeline} ${optionPanel === 'pins' ? styles.blurred : ''}`}
+				ref={timelineRef}
+				onScroll={markReadAtBottom}
+			>
 				{currentConversation.isIdentityChanged && (
 					<p class={styles.identityWarning}>Safety number changed — verify this contact in Chat options.</p>
 				)}
@@ -1219,6 +1253,16 @@ export function ChatRoom({ conversation, onBack }: Props) {
 					</div>
 				) : null}
 			</section>
+			{optionPanel === 'pins' && (
+				<PinnedMessages
+					pins={pins}
+					index={pinIndex}
+					onChange={(direction) =>
+						setPinIndex((current) => (pins.length ? (current + direction + pins.length) % pins.length : 0))
+					}
+					onJump={jumpToPinnedMessage}
+				/>
+			)}
 			{!atBottom && (
 				<FocusButton
 					id="chat-jump-latest"
@@ -1229,6 +1273,19 @@ export function ChatRoom({ conversation, onBack }: Props) {
 				>
 					↓
 				</FocusButton>
+			)}
+			{voiceOpen && capabilities?.voiceNotes && (
+				<VoiceComposer
+					onClose={() => {
+						setVoiceOpen(false);
+						inputRef.current?.focus({ preventScroll: true });
+					}}
+					onSend={async (recording) => {
+						await service.sendVoiceNote(conversation, recording);
+						followBottom.current = true;
+						await load();
+					}}
+				/>
 			)}
 			<form class={styles.compose} ref={formRef} onSubmit={send}>
 				{editing && (
@@ -1249,6 +1306,30 @@ export function ChatRoom({ conversation, onBack }: Props) {
 							×
 						</button>
 					</div>
+				)}
+				{capabilities?.voiceNotes && (
+					<FocusButton
+						id="chat-voice"
+						vertical={false}
+						class={styles.utility}
+						type="button"
+						onFocus={() => {
+							setComposeControl('voice');
+							setComposerFocused(false);
+							setSelectedMessageId(undefined);
+						}}
+						onArrow={(key) => {
+							if (key === 'ArrowRight') {
+								focus(draft ? 'chat-clear-draft' : 'chat-compose');
+								return true;
+							}
+							return true;
+						}}
+						onClick={() => setVoiceOpen(true)}
+						aria-label="Record voice note"
+					>
+						●
+					</FocusButton>
 				)}
 				{draft && (
 					<FocusButton
@@ -1279,16 +1360,20 @@ export function ChatRoom({ conversation, onBack }: Props) {
 						setComposeControl(undefined);
 					}}
 					onArrow={(key) => {
+						if (key === 'ArrowLeft' && capabilities?.voiceNotes) {
+							focus('chat-voice');
+							return true;
+						}
 						if (key === 'ArrowUp') return focusLastMessage();
-						if (key === 'ArrowLeft' && draft) {
-							focus('chat-clear-draft');
+						if (key === 'ArrowLeft') {
+							focus(draft ? 'chat-clear-draft' : capabilities?.voiceNotes ? 'chat-voice' : 'chat-compose');
 							return true;
 						}
 						if (key === 'ArrowRight') {
 							focus('chat-send');
 							return true;
 						}
-						return key === 'ArrowLeft';
+						return false;
 					}}
 					onKeyDown={(event) => {
 						if (event.key !== 'Enter') return;
@@ -1299,6 +1384,7 @@ export function ChatRoom({ conversation, onBack }: Props) {
 				/>
 				<FocusButton
 					id="chat-send"
+					vertical={false}
 					type="submit"
 					aria-label="Send"
 					onFocus={() => {

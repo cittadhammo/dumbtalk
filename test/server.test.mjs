@@ -34,6 +34,8 @@ test("requested messaging and conversation features remain wired", async () => {
   for (const feature of ["quoteTimestamp", "receiptMessage", "typingMessage", "reactions", "previews", "expiresAt"]) assert.match(server, new RegExp(feature));
   assert.match(server, /function normalizedMentions\(items\)/);
   assert.match(server, /function displayIdentity\(value, fallback = "Unknown"\)/);
+  assert.match(server, /import \{ randomBytes, timingSafeEqual \} from "node:crypto"/);
+  assert.match(server, /Unknown member/);
   assert.match(server, /enriched\.quote = \{ \.\.\.item\.quote, author: displayIdentity\(item\.quote\.author/);
   assert.match(client, /function plainMentionText\(value, mentions = \[\]\)/);
   assert.match(client, /activeMention \? `@\$\{mentionLabel\(activeMention\)\}`/);

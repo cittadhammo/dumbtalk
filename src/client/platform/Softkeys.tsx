@@ -17,7 +17,10 @@ type Entry = {
 };
 
 type ContextValue = {
-	push: (config: SoftkeyConfig) => () => void;
+	push: (config: SoftkeyConfig) => {
+		update: (next: SoftkeyConfig) => void;
+		remove: () => void;
+	};
 };
 
 const SoftkeyContext = createContext<ContextValue | null>(null);
@@ -36,14 +39,20 @@ export function SoftkeyProvider({ children }: { children: ComponentChildren }) {
 			const id = Symbol('softkey-screen');
 			setStack((items) => [...items, { id, config }]);
 
-			return () => {
-				setStack((items) => items.filter((item) => item.id !== id));
+			return {
+				update: (next) => {
+					setStack((items) => items.map((item) => (item.id === id ? { ...item, config: next } : item)));
+				},
+				remove: () => {
+					setStack((items) => items.filter((item) => item.id !== id));
+				},
 			};
 		},
 		[],
 	);
 
 	const config = currentConfig(stack);
+	const contextValue = useMemo<ContextValue>(() => ({ push }), [push]);
 
 	useEffect(() => {
 		const invoke = (key: Softkey) => {
@@ -79,7 +88,7 @@ export function SoftkeyProvider({ children }: { children: ComponentChildren }) {
 	}, []);
 
 	return (
-		<SoftkeyContext.Provider value={{ push }}>
+		<SoftkeyContext.Provider value={contextValue}>
 			{children}
 			<nav class={styles.bar} aria-label="Soft keys">
 				<button class={styles.button} type="button" onClick={config.left?.onPress}>
@@ -99,6 +108,12 @@ export function SoftkeyProvider({ children }: { children: ComponentChildren }) {
 export function useSoftkeys(config: SoftkeyConfig, dependencies: unknown[] = []) {
 	const context = useContext(SoftkeyContext);
 	if (!context) throw new Error('useSoftkeys must be used inside SoftkeyProvider');
+	const handle = useRef<ReturnType<ContextValue['push']>>();
 
-	useEffect(() => context.push(config), dependencies);
+	useEffect(() => {
+		handle.current = context.push(config);
+		return () => handle.current?.remove();
+	}, [context]);
+
+	useEffect(() => handle.current?.update(config), dependencies);
 }

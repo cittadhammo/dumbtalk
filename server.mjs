@@ -2,7 +2,7 @@ import { createServer } from "node:http";
 import { createReadStream, existsSync } from "node:fs";
 import { mkdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
 import { basename, extname, join, normalize } from "node:path";
-import { timingSafeEqual } from "node:crypto";
+import { randomBytes, timingSafeEqual } from "node:crypto";
 import { spawn } from "node:child_process";
 import QRCode from "qrcode";
 import { prepareSignalCli, rollBackSignalCli } from "./signal-cli-updater.mjs";
@@ -680,8 +680,12 @@ async function api(req, res, url) {
         archived: appState.archived.includes(`group:${group.id}`),
         avatar: `/api/avatar/group/${encodeURIComponent(group.id)}`,
         expiration: Number(appState.expirations[`group:${group.id}`] || 0),
-        members: (group.members || []).map(member => ({ id: member, name: identityNames.get(member) || member })),
-        admins: group.admins || [],
+        members: (group.members || []).map(member => {
+          const source = member && typeof member === "object" ? member : {};
+          const id = typeof member === "string" ? member : source.number || source.uuid || source.aci || source.id || "";
+          return { id, name: displayIdentity(source, identityNames.get(id) || id || "Unknown member") };
+        }),
+        admins: (group.admins || []).map(admin => typeof admin === "string" ? admin : admin?.number || admin?.uuid || admin?.aci || admin?.id).filter(Boolean),
         description: group.description || "",
         inviteLink: group.groupInviteLink || "",
         blocked: Boolean(group.isBlocked ?? group.blocked),

@@ -52,6 +52,11 @@
 	display: none;
 }
 
+.blurred {
+	filter: blur(3px);
+	pointer-events: none;
+}
+
 .loadOlder {
 	display: block;
 	margin: 1px auto 7px;
@@ -445,6 +450,15 @@
 	font-size: 15px;
 }
 
+.reactionPicker {
+	display: grid;
+	grid-template-columns: repeat(6, minmax(0, 1fr));
+	gap: 3px;
+	min-height: 0;
+	padding: 5px;
+	overflow-y: auto;
+}
+
 .moreReactions {
 	display: block;
 	width: 100%;
@@ -504,11 +518,45 @@
 }
 
 .voiceNote {
-	display: block;
+	display: flex;
+	align-items: center;
+	gap: 6px;
 	margin: 3px 0;
 	padding: 6px;
 	background: #10201b88;
 	border-radius: 12px;
+}
+
+.voiceIcon {
+	display: grid;
+	width: 23px;
+	height: 23px;
+	flex: 0 0 23px;
+	place-items: center;
+	background: #ffffff24;
+	border-radius: 50%;
+	font-size: 9px;
+}
+
+.voiceProgress {
+	display: grid;
+	min-width: 0;
+	flex: 1;
+	gap: 2px;
+}
+
+.voiceProgress strong {
+	font-size: 10px;
+}
+
+.voiceProgress progress {
+	width: 100%;
+	height: 4px;
+	accent-color: white;
+}
+
+.voiceNote small {
+	font-size: 9px;
 }
 
 .voiceNote audio {

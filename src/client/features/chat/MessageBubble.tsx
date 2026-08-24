@@ -1,5 +1,6 @@
 import { FocusButton } from '../../components/FocusButton';
 import { useProtectedBlob } from '../../hooks/useProtectedBlob';
+import { useCallback, useState } from 'preact/hooks';
 import type { ArrowKey } from '../../platform/Focus';
 import type { UniversalAttachment, UniversalMessage } from '../../services/contracts';
 import { MessageMedia } from './MessageMedia';
@@ -44,11 +45,41 @@ function VoiceNote({
 	onReady: (audio?: HTMLAudioElement) => void;
 }) {
 	const source = useProtectedBlob(attachment.path, `voice:${message.id}:${attachment.id}`);
+	const [current, setCurrent] = useState(0);
+	const [duration, setDuration] = useState(0);
+	const [playing, setPlaying] = useState(false);
+	const registerAudio = useCallback(
+		(element: HTMLAudioElement | null) => onReady(element ?? undefined),
+		[onReady],
+	);
+	const clock = (seconds: number) =>
+		`${Math.floor(seconds / 60)}:${Math.floor(seconds % 60)
+			.toString()
+			.padStart(2, '0')}`;
 
 	return (
 		<span class={styles.voiceNote}>
-			<span>▶ Voice note</span>
-			{source && <audio src={source} preload="metadata" ref={(element) => onReady(element ?? undefined)} />}
+			<span class={styles.voiceIcon}>{playing ? 'Ⅱ' : '▶'}</span>
+			<span class={styles.voiceProgress}>
+				<strong>Voice note</strong>
+				<progress max={duration || 1} value={current} />
+			</span>
+			<small>{clock(current || duration)}</small>
+			{source && (
+				<audio
+					src={source}
+					preload="metadata"
+					ref={registerAudio}
+					onLoadedMetadata={(event) => setDuration(event.currentTarget.duration || 0)}
+					onTimeUpdate={(event) => setCurrent(event.currentTarget.currentTime)}
+					onPlay={() => setPlaying(true)}
+					onPause={() => setPlaying(false)}
+					onEnded={() => {
+						setPlaying(false);
+						setCurrent(0);
+					}}
+				/>
+			)}
 		</span>
 	);
 }

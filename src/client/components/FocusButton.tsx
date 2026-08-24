@@ -10,9 +10,18 @@ type FocusButtonProps = Props & {
 	buttonRef?: { current: HTMLButtonElement | null };
 };
 
-export function FocusButton({ id, grid, columns, onArrow, children, buttonRef, ...props }: FocusButtonProps) {
+export function FocusButton({
+	id,
+	grid,
+	columns,
+	vertical,
+	onArrow,
+	children,
+	buttonRef,
+	...props
+}: FocusButtonProps) {
 	const { autoFocus, ...buttonProps } = props;
-	const ref = useFocusable({ id, grid, columns, onArrow, initial: Boolean(autoFocus) });
+	const ref = useFocusable({ id, grid, columns, vertical, onArrow, initial: Boolean(autoFocus) });
 	const combinedRef = useCallback(
 		(element: HTMLButtonElement | null) => {
 			ref(element);

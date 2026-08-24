@@ -1,13 +1,11 @@
 import { FocusButton } from '../../components/FocusButton';
+import { useState } from 'preact/hooks';
 import type { ServiceCapabilities, UniversalConversation } from '../../services/contracts';
 import styles from './ChatOptions.module.scss';
 
 type Props = {
 	conversation: UniversalConversation;
-	onArchive: () => void;
-	onFavourite: () => void;
 	onExpiration: (seconds: number) => void;
-	onVoice: () => void;
 	onPoll: () => void;
 	onPins: () => void;
 	onGroup: () => void;
@@ -28,10 +26,7 @@ const timers = [
 
 export function ChatOptions({
 	conversation,
-	onArchive,
-	onFavourite,
 	onExpiration,
-	onVoice,
 	onPoll,
 	onPins,
 	onGroup,
@@ -41,18 +36,16 @@ export function ChatOptions({
 	onGroupInvite,
 	capabilities,
 }: Props) {
+	const [showExpiration, setShowExpiration] = useState(false);
+	const currentTimer = timers.find((timer) => timer.seconds === conversation.expiration)?.label ?? 'Custom';
+
 	return (
 		<main class={styles.screen}>
 			<header>Chat options</header>
 			<section class={styles.list}>
 				<p class={styles.heading}>Message</p>
-				{capabilities?.voiceNotes && (
-					<FocusButton id="chat-option-voice" type="button" class={styles.action} autoFocus onClick={onVoice}>
-						● Record voice note
-					</FocusButton>
-				)}
 				{capabilities?.polls && (
-					<FocusButton id="chat-option-poll" type="button" class={styles.action} onClick={onPoll}>
+					<FocusButton id="chat-option-poll" type="button" class={styles.action} autoFocus onClick={onPoll}>
 						▥ Create poll
 					</FocusButton>
 				)}
@@ -112,31 +105,42 @@ export function ChatOptions({
 						× Delete message request
 					</FocusButton>
 				)}
-				<FocusButton id="chat-option-archive" type="button" class={styles.action} onClick={onArchive}>
-					{conversation.isArchived ? 'Unarchive chat' : 'Archive chat'}
-				</FocusButton>
-				<FocusButton id="chat-option-favourite" type="button" class={styles.action} onClick={onFavourite}>
-					{conversation.isFavourite ? 'Remove favourite' : 'Favourite chat'}
-				</FocusButton>
 				{capabilities?.blocking && !conversation.isNoteToSelf && (
 					<FocusButton id="chat-option-block" type="button" class={styles.action} onClick={onBlock}>
 						{conversation.isBlocked ? 'Unblock' : 'Block'}{' '}
 						{conversation.kind === 'group' ? 'group' : 'contact'}
 					</FocusButton>
 				)}
-				{capabilities?.disappearingMessages && <p class={styles.heading}>Disappearing messages</p>}
-				{capabilities?.disappearingMessages &&
-					timers.map((timer) => (
-						<FocusButton
-							id={`chat-expiration-${timer.seconds}`}
-							type="button"
-							class={styles.action}
-							onClick={() => onExpiration(timer.seconds)}
-						>
-							{conversation.expiration === timer.seconds ? '✓ ' : ''}
-							{timer.label}
-						</FocusButton>
-					))}
+				{capabilities?.disappearingMessages && (
+					<FocusButton
+						id="chat-option-expiration"
+						type="button"
+						class={styles.action}
+						onClick={() => setShowExpiration((value) => !value)}
+					>
+						◷ Disappearing messages ·{' '}
+						{currentTimer.replace('Disappear after ', '').replace('Turn off ', 'Off')}
+					</FocusButton>
+				)}
+				{capabilities?.disappearingMessages && showExpiration && (
+					<div class={styles.dropdown}>
+						<p class={styles.heading}>Choose duration</p>
+						{timers.map((timer) => (
+							<FocusButton
+								id={`chat-expiration-${timer.seconds}`}
+								type="button"
+								class={styles.action}
+								onClick={() => {
+									onExpiration(timer.seconds);
+									setShowExpiration(false);
+								}}
+							>
+								{conversation.expiration === timer.seconds ? '✓ ' : ''}
+								{timer.label}
+							</FocusButton>
+						))}
+					</div>
+				)}
 			</section>
 		</main>
 	);

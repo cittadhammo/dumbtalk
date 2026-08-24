@@ -1,6 +1,6 @@
-import { useRef, useState } from 'preact/hooks';
-import { FocusButton } from '../../components/FocusButton';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import { useProtectedBlob } from '../../hooks/useProtectedBlob';
+import { useSoftkeys } from '../../platform/Softkeys';
 import type { UniversalAttachment, UniversalMessage } from '../../services/contracts';
 import styles from './MessageMedia.module.scss';
 
@@ -58,73 +58,76 @@ export function MediaViewer({
 	onChange: (direction: number) => void;
 }) {
 	const [zoomed, setZoomed] = useState(false);
+	const [playing, setPlaying] = useState(false);
 	const bodyRef = useRef<HTMLElement>(null);
+	const videoRef = useRef<HTMLVideoElement>(null);
 	const source = useProtectedBlob(attachment.path, `media:${message.id}:${attachment.id}`);
 	const media = message.attachments.filter((item) => item.kind === 'image' || item.kind === 'video');
+	const toggle = () => {
+		if (attachment.kind === 'image') {
+			setZoomed((value) => !value);
+			bodyRef.current?.scrollTo({ top: 0, left: 0 });
+			return;
+		}
+		const video = videoRef.current;
+		if (!video) return;
+		if (video.paused) void video.play();
+		else video.pause();
+	};
+
+	useSoftkeys(
+		{
+			left: media.length > 1 ? { label: 'Previous', onPress: () => onChange(-1) } : undefined,
+			center: {
+				label: attachment.kind === 'image' ? (zoomed ? 'Fit' : 'Zoom') : playing ? 'Pause' : 'Play',
+				onPress: toggle,
+			},
+			right: { label: 'Back', onPress: onBack },
+		},
+		[attachment.id, media.length, onBack, onChange, playing, zoomed],
+	);
+
+	useEffect(() => {
+		setZoomed(false);
+		bodyRef.current?.scrollTo({ top: 0, left: 0 });
+	}, [attachment.id]);
+
+	useEffect(() => {
+		const onKeyDown = (event: KeyboardEvent) => {
+			if (event.key === 'Enter') toggle();
+			else if (event.key === 'ArrowLeft' && media.length > 1) onChange(-1);
+			else if (event.key === 'ArrowRight' && media.length > 1) onChange(1);
+			else if (zoomed && event.key === 'ArrowUp') bodyRef.current?.scrollBy({ top: -120 });
+			else if (zoomed && event.key === 'ArrowDown') bodyRef.current?.scrollBy({ top: 120 });
+			else return;
+			event.preventDefault();
+			event.stopPropagation();
+		};
+		window.addEventListener('keydown', onKeyDown, true);
+		return () => window.removeEventListener('keydown', onKeyDown, true);
+	}, [media.length, onChange, zoomed]);
 
 	return (
 		<main class={styles.viewer}>
-			<header>{attachment.kind === 'video' ? 'Video' : `Photo ${index + 1} of ${media.length}`}</header>
+			<header>
+				{attachment.kind === 'video' ? 'Video' : `Photo ${index + 1} of ${media.length}`}
+				{attachment.kind === 'image' && <span>{zoomed ? 'Width' : 'Fit'}</span>}
+			</header>
 			<section ref={bodyRef} class={`${styles.viewerBody} ${zoomed ? styles.zoomed : ''}`}>
-				{source && attachment.kind === 'video' && <video src={source} controls autoplay playsinline />}
+				{source && attachment.kind === 'video' && (
+					<video
+						ref={videoRef}
+						src={source}
+						controls
+						autoplay
+						playsinline
+						onPlay={() => setPlaying(true)}
+						onPause={() => setPlaying(false)}
+					/>
+				)}
 				{source && attachment.kind === 'image' && <img src={source} alt={attachment.caption ?? 'Photo'} />}
 				{!source && <p>Loading media…</p>}
 			</section>
-			<div class={styles.viewerControls}>
-				{media.length > 1 && (
-					<FocusButton id="viewer-previous" type="button" onClick={() => onChange(-1)}>
-						‹
-					</FocusButton>
-				)}
-				{attachment.kind === 'image' && (
-					<FocusButton
-						id="viewer-zoom"
-						type="button"
-						onClick={() => setZoomed((value) => !value)}
-						onArrow={(key) => {
-							if ((key === 'ArrowUp' || key === 'ArrowDown') && zoomed) {
-								bodyRef.current?.scrollBy({ top: key === 'ArrowUp' ? -120 : 120 });
-								return true;
-							}
-							if (key === 'ArrowLeft' && media.length > 1) {
-								onChange(-1);
-								return true;
-							}
-							if (key === 'ArrowRight' && media.length > 1) {
-								onChange(1);
-								return true;
-							}
-							return false;
-						}}
-					>
-						{zoomed ? 'Fit' : 'Zoom'}
-					</FocusButton>
-				)}
-				{media.length > 1 && (
-					<FocusButton id="viewer-next" type="button" onClick={() => onChange(1)}>
-						›
-					</FocusButton>
-				)}
-			</div>
-			<FocusButton
-				id="viewer-back"
-				type="button"
-				class={styles.back}
-				onArrow={(key) => {
-					if (key === 'ArrowLeft' && media.length > 1) {
-						onChange(-1);
-						return true;
-					}
-					if (key === 'ArrowRight' && media.length > 1) {
-						onChange(1);
-						return true;
-					}
-					return false;
-				}}
-				onClick={onBack}
-			>
-				Back
-			</FocusButton>
 		</main>
 	);
 }
