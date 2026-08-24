@@ -51,7 +51,8 @@ DNS, or referrers; the client sends it only in same-origin API authorization hea
 
 The bundled signal-cli is automatically updated from stable releases with checksum validation,
 health checking, and rollback. This matters because old versions can stop working with Signal.
-`wacli` is rebuilt from its current upstream release whenever the container image is rebuilt.
+`wacli` is installed from a checksum-verified official release archive. Update the pinned release
+version when you rebuild the image to pick up a newer WhatsApp bridge.
 
 ## CloudPhone
 

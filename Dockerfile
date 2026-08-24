@@ -7,19 +7,13 @@ COPY tsconfig.client.json vite.config.ts ./
 COPY src/client ./src/client
 RUN npm run typecheck:client && npm run build:client
 
-FROM golang:1.26-bookworm AS wacli-build
-
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends build-essential git \
-    && rm -rf /var/lib/apt/lists/*
-
-ENV CGO_ENABLED=1 CGO_CFLAGS=-Wno-error=missing-braces
-RUN go install -tags sqlite_fts5 github.com/openclaw/wacli/cmd/wacli@latest
-
 FROM node:22-bookworm-slim
 
 ARG SIGNAL_CLI_VERSION=0.14.7
 ARG SIGNAL_CLI_SHA256=0fe065294adcf35df4c249b635d0ce57de7765d4fec660bffaa2e7f0549d4e5f
+ARG WACLI_VERSION=0.17.1
+ARG WACLI_LINUX_AMD64_SHA256=cbd5e74d5b805550cc36c7479aca552970cc1b314c5c08e02367e08b785714fd
+ARG WACLI_LINUX_ARM64_SHA256=8e5d21f8d5f097e5d3a883cdb42848a9e50a7383e4de049c807cc44e6e7c81b6
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates curl ffmpeg gosu sqlite3 \
@@ -27,7 +21,19 @@ RUN apt-get update \
     && echo "${SIGNAL_CLI_SHA256}  /tmp/signal-cli.tar.gz" | sha256sum -c - \
     && tar -xzf /tmp/signal-cli.tar.gz -C /usr/local/bin \
     && chmod 0755 /usr/local/bin/signal-cli \
+    && architecture="$(dpkg --print-architecture)" \
+    && case "$architecture" in \
+         amd64) wacli_arch="amd64"; wacli_sha256="$WACLI_LINUX_AMD64_SHA256" ;; \
+         arm64) wacli_arch="arm64"; wacli_sha256="$WACLI_LINUX_ARM64_SHA256" ;; \
+         *) echo "Unsupported wacli architecture: $architecture" >&2; exit 1 ;; \
+       esac \
+    && wacli_archive="wacli_${WACLI_VERSION}_linux_${wacli_arch}.tar.gz" \
+    && curl -fsSL "https://github.com/openclaw/wacli/releases/download/v${WACLI_VERSION}/${wacli_archive}" -o "/tmp/${wacli_archive}" \
+    && echo "${wacli_sha256}  /tmp/${wacli_archive}" | sha256sum -c - \
+    && tar -xzf "/tmp/${wacli_archive}" -C /usr/local/bin wacli \
+    && chmod 0755 /usr/local/bin/wacli \
     && rm -f /tmp/signal-cli.tar.gz \
+    && rm -f "/tmp/${wacli_archive}" \
     && apt-get purge -y --auto-remove curl \
     && rm -rf /var/lib/apt/lists/*
 
@@ -38,7 +44,6 @@ COPY server.mjs ./
 COPY telegram-service.mjs ./
 COPY whatsapp-service.mjs ./
 COPY signal-cli-updater.mjs ./
-COPY --from=wacli-build /go/bin/wacli /usr/local/bin/wacli
 COPY --from=client-build /build/public-next ./public
 COPY docker-entrypoint.sh /usr/local/bin/cloudphone-signal-entrypoint
 
