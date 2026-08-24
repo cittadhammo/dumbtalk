@@ -31,6 +31,18 @@ function ScreenHeader({ children }: { children: ComponentChildren }) {
 	return <header class={styles.header}>{children}</header>;
 }
 
+function serviceMark(id: ServiceId) {
+	return id === 'signal' ? 'S' : id === 'telegram' ? 'T' : 'W';
+}
+
+function serviceColour(id: ServiceId) {
+	return id === 'signal'
+		? styles.signalIcon
+		: id === 'telegram'
+			? styles.telegramIcon
+			: styles.whatsappIcon;
+}
+
 function WelcomeScreen({ onContinue }: { onContinue: () => void }) {
 	const { activate } = useFocusManager();
 
@@ -102,9 +114,9 @@ function ServiceList({
 						onClick={() => onManage(status.id)}
 					>
 						<span
-							class={`${styles.serviceIcon} ${status.id === 'signal' ? styles.signalIcon : styles.telegramIcon}`}
+							class={`${styles.serviceIcon} ${serviceColour(status.id)}`}
 						>
-							{status.id === 'signal' ? 'S' : 'T'}
+							{serviceMark(status.id)}
 						</span>
 						<span class={styles.body}>
 							<strong>{status.label}</strong>
@@ -149,9 +161,9 @@ function ManageServiceScreen({
 			<ScreenHeader>{service.label}</ScreenHeader>
 			<section class={styles.detail}>
 				<span
-					class={`${styles.largeIcon} ${service.id === 'signal' ? styles.signalIcon : styles.telegramIcon}`}
+					class={`${styles.largeIcon} ${serviceColour(service.id)}`}
 				>
-					{service.id === 'signal' ? 'S' : 'T'}
+					{serviceMark(service.id)}
 				</span>
 				<h1>{service.label}</h1>
 				<p class={status?.connected ? styles.goodStatus : styles.quietStatus}>

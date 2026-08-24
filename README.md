@@ -1,8 +1,9 @@
 # DumbTalk
 
-A small, self-hosted, D-pad-first messaging client for QVGA CloudPhone feature phones. Signal and
-Telegram share one inbox; each account remains in its own isolated service data directory.
-DumbTalk is unofficial and is not affiliated with Signal, Telegram, or CloudMosa.
+A small, self-hosted, D-pad-first messaging client for QVGA CloudPhone feature phones. Signal,
+Telegram, and WhatsApp share one inbox; each account remains in its own isolated service data
+directory. DumbTalk is unofficial and is not affiliated with Signal, Telegram, WhatsApp, or
+CloudMosa.
 
 DumbTalk supports contacts, groups, text and voice messages, replies, reactions, editing,
 deletion, receipts, typing, synced archives, disappearing messages, polls, pins, inline media,
@@ -23,10 +24,12 @@ PUBLIC_ORIGIN=https://signal.example.com
 DEVICE_NAME=DumbTalk
 TELEGRAM_API_ID=123456
 TELEGRAM_API_HASH=your-api-hash
+WACLI_DEVICE_LABEL=DumbTalk
 ```
 
 The Telegram values are optional and come from [my.telegram.org](https://my.telegram.org). Leave
-them empty for a Signal-only instance.
+them empty if you do not use Telegram. WhatsApp uses the bundled `wacli` linked-device client and
+needs no API credentials.
 
 Start DumbTalk:
 
@@ -37,17 +40,18 @@ docker compose logs -f cloudphone-signal
 
 It listens on `127.0.0.1:8787` by default. Point your HTTPS reverse proxy at that address and
 set the CloudPhone widget URL to `PUBLIC_ORIGIN/#WIDGET_TOKEN`. Connect services from DumbTalk’s
-Services screen. Signal uses its linked-device QR; Telegram supports either its Devices QR or a
-phone number, Telegram login code, and optional two-step-verification password. Never expose
-signal-cli's internal port `7583`.
+Services screen. Signal and WhatsApp use linked-device QR codes; Telegram supports either its
+Devices QR or a phone number, Telegram login code, and optional two-step-verification password.
+Never expose signal-cli's internal port `7583`.
 
-Signal linked-device keys, the Telegram session, cached messages, and decrypted media are stored in `./data`. Keep that
-directory and `.env` private and backed up. Anyone with either the data or `WIDGET_TOKEN` may be
+Signal linked-device keys, Telegram and WhatsApp sessions, cached messages, and decrypted media
+are stored in `./data`. Keep that directory and `.env` private and backed up. Anyone with either the data or `WIDGET_TOKEN` may be
 able to read your messages. The fragment token is intentionally not sent in HTTP request paths,
 DNS, or referrers; the client sends it only in same-origin API authorization headers.
 
 The bundled signal-cli is automatically updated from stable releases with checksum validation,
 health checking, and rollback. This matters because old versions can stop working with Signal.
+`wacli` is rebuilt from its current upstream release whenever the container image is rebuilt.
 
 ## CloudPhone
 

@@ -117,3 +117,17 @@ test('Telegram is registered as a universal messaging service', async () => {
 	assert.match(adapter, /allowedReactions/);
 	assert.match(adapter, /readThrough/);
 });
+
+test('WhatsApp is registered as a linked-device universal messaging service', async () => {
+	const registry = await readFile(new URL('../src/client/services/registry.ts', import.meta.url), 'utf8');
+	const adapter = await readFile(new URL('../src/client/services/whatsapp.ts', import.meta.url), 'utf8');
+	const service = await readFile(new URL('../whatsapp-service.mjs', import.meta.url), 'utf8');
+
+	assert.match(registry, /whatsappService/);
+	assert.match(adapter, /Link WhatsApp/);
+	assert.match(adapter, /auth\/qr\/start/);
+	assert.match(adapter, /serviceId: 'whatsapp'/);
+	assert.match(service, /"auth", "--qr-format", "text"/);
+	assert.match(service, /"sync", "--follow"/);
+	assert.match(service, /"chats", "mark-read"/);
+});

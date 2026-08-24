@@ -7,13 +7,22 @@ COPY tsconfig.client.json vite.config.ts ./
 COPY src/client ./src/client
 RUN npm run typecheck:client && npm run build:client
 
+FROM golang:1.26-bookworm AS wacli-build
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends build-essential git \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV CGO_ENABLED=1 CGO_CFLAGS=-Wno-error=missing-braces
+RUN go install -tags sqlite_fts5 github.com/openclaw/wacli/cmd/wacli@latest
+
 FROM node:22-bookworm-slim
 
 ARG SIGNAL_CLI_VERSION=0.14.7
 ARG SIGNAL_CLI_SHA256=0fe065294adcf35df4c249b635d0ce57de7765d4fec660bffaa2e7f0549d4e5f
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates curl gosu \
+    && apt-get install -y --no-install-recommends ca-certificates curl ffmpeg gosu sqlite3 \
     && curl -fsSL "https://github.com/AsamK/signal-cli/releases/download/v${SIGNAL_CLI_VERSION}/signal-cli-${SIGNAL_CLI_VERSION}-Linux-native.tar.gz" -o /tmp/signal-cli.tar.gz \
     && echo "${SIGNAL_CLI_SHA256}  /tmp/signal-cli.tar.gz" | sha256sum -c - \
     && tar -xzf /tmp/signal-cli.tar.gz -C /usr/local/bin \
@@ -27,11 +36,13 @@ COPY package*.json ./
 RUN npm install --omit=dev && npm cache clean --force
 COPY server.mjs ./
 COPY telegram-service.mjs ./
+COPY whatsapp-service.mjs ./
 COPY signal-cli-updater.mjs ./
+COPY --from=wacli-build /go/bin/wacli /usr/local/bin/wacli
 COPY --from=client-build /build/public-next ./public
 COPY docker-entrypoint.sh /usr/local/bin/cloudphone-signal-entrypoint
 
-RUN mkdir -p /data/signal-cli /data/app /data/telegram \
+RUN mkdir -p /data/signal-cli /data/app /data/telegram /data/whatsapp \
     && chown -R node:node /data /app \
     && chmod 0755 /usr/local/bin/cloudphone-signal-entrypoint
 

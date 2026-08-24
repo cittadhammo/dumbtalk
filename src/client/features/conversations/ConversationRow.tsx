@@ -126,7 +126,11 @@ export function ConversationRow({
 							class={styles.serviceIcon}
 							aria-label={`${conversation.serviceId} conversation`}
 						>
-							{conversation.serviceId === 'signal' ? 'S' : 'T'}
+							{conversation.serviceId === 'signal'
+								? 'S'
+								: conversation.serviceId === 'telegram'
+									? 'T'
+									: 'W'}
 						</span>
 						{conversation.unreadCount > 0 && (
 							<span class={styles.unread}>{conversation.unreadCount}</span>

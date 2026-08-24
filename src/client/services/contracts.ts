@@ -1,4 +1,4 @@
-export type ServiceId = 'signal' | 'telegram';
+export type ServiceId = 'signal' | 'telegram' | 'whatsapp';
 
 export type ServiceStatus = {
 	id: ServiceId;

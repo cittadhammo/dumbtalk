@@ -7,6 +7,7 @@ import { spawn } from "node:child_process";
 import QRCode from "qrcode";
 import { prepareSignalCli, rollBackSignalCli } from "./signal-cli-updater.mjs";
 import { TelegramService } from "./telegram-service.mjs";
+import { WhatsAppService } from "./whatsapp-service.mjs";
 
 const PORT = Number(process.env.PORT || 8080);
 const DATA_DIR = process.env.DATA_DIR || "/data";
@@ -39,6 +40,10 @@ const telegram = new TelegramService({
   dataDir: DATA_DIR,
   apiId: process.env.TELEGRAM_API_ID,
   apiHash: process.env.TELEGRAM_API_HASH,
+  log: (message, extra) => console.log(`[dumbtalk] ${message}`, extra || ""),
+});
+const whatsapp = new WhatsAppService({
+  dataDir: DATA_DIR,
   log: (message, extra) => console.log(`[dumbtalk] ${message}`, extra || ""),
 });
 
@@ -81,6 +86,7 @@ await mkdir(APP_DIR, { recursive: true });
 await mkdir(MEDIA_DIR, { recursive: true });
 await mkdir(SIGNAL_DIR, { recursive: true });
 await telegram.initialize();
+await whatsapp.initialize();
 try {
   messages = JSON.parse(await readFile(join(APP_DIR, "messages.json"), "utf8"));
 } catch {}
@@ -553,6 +559,9 @@ async function api(req, res, url) {
   if (url.pathname.startsWith("/api/services/telegram")) {
     return telegram.handle(req, res, url, { body, json });
   }
+  if (url.pathname.startsWith("/api/services/whatsapp")) {
+    return whatsapp.handle(req, res, url, { body, json });
+  }
 
   if (url.pathname === "/api/mindful" && req.method === "GET") {
     const day = url.searchParams.get("day");
@@ -578,11 +587,13 @@ async function api(req, res, url) {
   if (url.pathname === "/api/status" && req.method === "GET") {
     const accounts = signalReady ? await getAccounts() : [];
     const telegramStatus = telegram.statusPayload();
+    const whatsappStatus = whatsapp.statusPayload();
     return json(res, 200, {
       signalReady,
       linked: accounts.length > 0,
-      anyLinked: accounts.length > 0 || telegramStatus.connected,
+      anyLinked: accounts.length > 0 || telegramStatus.connected || whatsappStatus.connected,
       telegram: telegramStatus,
+      whatsapp: whatsappStatus,
       accounts,
       receive: { ...receiveStats, subscribed: receiveStats.connected },
       settings: appState.settings,
@@ -1291,6 +1302,7 @@ function shutdown() {
   server.close();
   signalProcess?.kill("SIGTERM");
   void telegram.shutdown();
+  void whatsapp.shutdown();
   setTimeout(() => process.exit(0), 3000).unref();
 }
 process.on("SIGTERM", shutdown);

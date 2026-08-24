@@ -1,0 +1,464 @@
+import { createReadStream, existsSync } from "node:fs";
+import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { spawn } from "node:child_process";
+import { basename, extname, join, resolve } from "node:path";
+import { randomUUID } from "node:crypto";
+import QRCode from "qrcode";
+
+const WACLI = "/usr/local/bin/wacli";
+const DEFAULT_SETTINGS = {
+  sendReadReceipts: true,
+  sendTypingIndicators: true,
+  linkPreviews: true,
+  defaultExpiration: 0,
+};
+
+function delay(milliseconds) {
+  return new Promise(resolve => setTimeout(resolve, milliseconds));
+}
+
+function asArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+function value(object, ...keys) {
+  for (const key of keys) {
+    if (object?.[key] !== undefined && object?.[key] !== null) return object[key];
+  }
+  return undefined;
+}
+
+function timestamp(value) {
+  const parsed = typeof value === "number" ? value : Date.parse(String(value || ""));
+  return Number.isFinite(parsed) ? parsed : Date.now();
+}
+
+function mediaKind(type, mime) {
+  const source = `${type || ""} ${mime || ""}`.toLowerCase();
+  if (source.includes("image") || source.includes("sticker")) return "image";
+  if (source.includes("video")) return "video";
+  if (source.includes("audio") || source.includes("voice") || source.includes("ptt")) return "audio";
+  return "file";
+}
+
+function isGroup(jid, kind) {
+  return kind === "group" || String(jid).endsWith("@g.us");
+}
+
+function safeJid(value) {
+  const jid = String(value || "").trim();
+  if (!/^[A-Za-z0-9._:@-]+$/.test(jid)) throw new Error("Invalid WhatsApp chat");
+  return jid;
+}
+
+function safeMessageId(value) {
+  const id = String(value || "").trim();
+  if (!/^[A-Za-z0-9._:@-]+$/.test(id)) throw new Error("Invalid WhatsApp message");
+  return id;
+}
+
+function errorText(stderr, fallback = "WhatsApp request failed") {
+  const text = String(stderr || "").trim();
+  try {
+    const parsed = JSON.parse(text);
+    return parsed.error || parsed.message || fallback;
+  } catch {
+    return text || fallback;
+  }
+}
+
+export class WhatsAppService {
+  constructor({ dataDir, log }) {
+    this.dataDir = join(dataDir, "whatsapp");
+    this.mediaDir = join(this.dataDir, "media");
+    this.statePath = join(this.dataDir, "state.json");
+    this.log = log;
+    this.authProcess = null;
+    this.syncProcess = null;
+    this.qr = null;
+    this.lastError = null;
+    this.accountLabel = null;
+    this.state = { favourites: [], settings: { ...DEFAULT_SETTINGS } };
+    this.dialogCache = { at: 0, values: [] };
+    this.messageCache = new Map();
+  }
+
+  get sessionPath() {
+    return join(this.dataDir, "session.db");
+  }
+
+  async initialize() {
+    await mkdir(this.mediaDir, { recursive: true });
+    try {
+      const saved = JSON.parse(await readFile(this.statePath, "utf8"));
+      this.state = {
+        ...this.state,
+        ...saved,
+        settings: { ...DEFAULT_SETTINGS, ...(saved.settings || {}) },
+      };
+    } catch {}
+    await this.refreshStatus();
+    if (this.isLinked()) this.startSync();
+  }
+
+  async persistState() {
+    await writeFile(this.statePath, JSON.stringify(this.state), { mode: 0o600 });
+  }
+
+  isLinked() {
+    return Boolean(this.accountLabel);
+  }
+
+  async refreshStatus() {
+    if (!existsSync(this.sessionPath)) {
+      this.accountLabel = null;
+      return false;
+    }
+    try {
+      const result = await this.run(["--read-only", "auth", "status"]);
+      this.accountLabel = result.linked_jid || result.phone || null;
+    } catch {
+      this.accountLabel = null;
+    }
+    return this.isLinked();
+  }
+
+  statusPayload() {
+    return {
+      ready: true,
+      connected: this.isLinked(),
+      authStage: this.isLinked() ? "authorized" : this.authProcess ? "qr" : "qr",
+      accountLabel: this.accountLabel || undefined,
+      qr: this.qr,
+      error: this.lastError || undefined,
+    };
+  }
+
+  command(args, { stdin = null } = {}) {
+    return spawn(WACLI, ["--store", this.dataDir, "--json", ...args], {
+      env: { ...process.env, WACLI_STORE_DIR: this.dataDir },
+      stdio: [stdin ? "pipe" : "ignore", "pipe", "pipe"],
+    });
+  }
+
+  run(args, options = {}) {
+    return new Promise((resolvePromise, reject) => {
+      const process = this.command(args, options);
+      let stdout = "";
+      let stderr = "";
+      process.stdout.on("data", chunk => { stdout += chunk; });
+      process.stderr.on("data", chunk => { stderr += chunk; });
+      process.on("error", reject);
+      process.on("exit", code => {
+        if (code !== 0) return reject(new Error(errorText(stderr)));
+        try {
+          resolvePromise(stdout.trim() ? JSON.parse(stdout) : {});
+        } catch {
+          reject(new Error("WhatsApp returned invalid JSON"));
+        }
+      });
+      if (options.stdin) process.stdin.end(options.stdin);
+    });
+  }
+
+  async beginSetup() {
+    if (this.isLinked()) return this.statusPayload();
+    if (this.authProcess) return this.statusPayload();
+    this.lastError = null;
+    this.qr = null;
+
+    const process = spawn(WACLI, ["--store", this.dataDir, "--events", "auth", "--qr-format", "text", "--download-media"], {
+      env: { ...process.env, WACLI_STORE_DIR: this.dataDir },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    this.authProcess = process;
+    let output = "";
+    const consume = async chunk => {
+      output += chunk.toString();
+      const lines = output.split(/\r?\n/);
+      output = lines.pop() || "";
+      for (const line of lines) {
+        const candidate = line.trim();
+        if (!candidate) continue;
+        let code = candidate;
+        try {
+          const event = JSON.parse(candidate);
+          code = event?.data?.code || event?.code || "";
+        } catch {}
+        if (!code || code === this.qr?.url) continue;
+        this.qr = { url: code, image: await QRCode.toDataURL(code, { margin: 1, width: 240 }) };
+      }
+    };
+    process.stdout.on("data", chunk => void consume(chunk));
+    process.stderr.on("data", chunk => {
+      void consume(chunk);
+      const text = chunk.toString().trim();
+      if (text) this.log("wacli auth", text);
+    });
+    process.on("exit", async code => {
+      if (this.authProcess !== process) return;
+      this.authProcess = null;
+      await this.refreshStatus();
+      if (code && !this.isLinked()) this.lastError = "WhatsApp linking did not complete";
+      if (this.isLinked()) this.startSync();
+    });
+    for (let attempt = 0; attempt < 60 && !this.qr && this.authProcess === process; attempt++) await delay(100);
+    if (!this.qr) throw new Error(this.lastError || "WhatsApp did not provide a QR code");
+    return this.statusPayload();
+  }
+
+  async pollSetup() {
+    const deadline = Date.now() + 20_000;
+    while (Date.now() < deadline && this.authProcess && !this.isLinked()) await delay(250);
+    await this.refreshStatus();
+    return this.statusPayload();
+  }
+
+  startSync() {
+    if (this.syncProcess || !this.isLinked()) return;
+    const process = spawn(WACLI, ["--store", this.dataDir, "--events", "sync", "--follow", "--download-media", "--presence-mode", "quiet", "--max-messages", process.env.WACLI_SYNC_MAX_MESSAGES || "50000", "--max-db-size", process.env.WACLI_SYNC_MAX_DB_SIZE || "1GB"], {
+      env: { ...process.env, WACLI_STORE_DIR: this.dataDir },
+      stdio: ["ignore", "ignore", "pipe"],
+    });
+    this.syncProcess = process;
+    process.stderr.on("data", chunk => {
+      const text = chunk.toString().trim();
+      if (text) this.log("wacli sync", text);
+      this.dialogCache.at = 0;
+      this.messageCache.clear();
+    });
+    process.on("exit", code => {
+      if (this.syncProcess !== process) return;
+      this.syncProcess = null;
+      if (code && this.isLinked()) setTimeout(() => this.startSync(), 5_000).unref();
+    });
+  }
+
+  async disconnect() {
+    this.authProcess?.kill("SIGTERM");
+    this.syncProcess?.kill("SIGTERM");
+    this.authProcess = null;
+    this.syncProcess = null;
+    if (this.isLinked()) await this.run(["auth", "logout"]).catch(error => this.log("wacli logout", error.message));
+    await rm(this.dataDir, { recursive: true, force: true });
+    await mkdir(this.mediaDir, { recursive: true });
+    this.accountLabel = null;
+    this.qr = null;
+    this.dialogCache = { at: 0, values: [] };
+    this.messageCache.clear();
+  }
+
+  async allChats() {
+    if (this.dialogCache.at && Date.now() - this.dialogCache.at < 15_000) {
+      return this.dialogCache.values;
+    }
+    const values = asArray(await this.run(["chats", "list", "--limit", "300"]));
+    this.dialogCache = { at: Date.now(), values };
+    return values;
+  }
+
+  normalizeMessage(message, chatJid, chatName = "") {
+    const id = String(value(message, "msg_id", "MsgID", "id") || "");
+    const mediaType = String(value(message, "media_type", "MediaType") || "");
+    const mimeType = String(value(message, "mime_type", "MimeType") || "");
+    const localPath = value(message, "local_path", "LocalPath");
+    const text = String(value(message, "text", "Text", "display_text", "DisplayText", "media_caption", "MediaCaption") || "");
+    const result = {
+      id,
+      conversationId: chatJid,
+      direction: value(message, "from_me", "FromMe") ? "out" : "in",
+      sender: String(value(message, "sender_name", "SenderName") || "WhatsApp user"),
+      senderId: String(value(message, "sender_jid", "SenderJID") || ""),
+      text,
+      timestamp: timestamp(value(message, "timestamp", "Timestamp")),
+      edited: Boolean(value(message, "edited", "Edited")),
+      deleted: Boolean(value(message, "revoked", "Revoked", "deleted_for_me", "DeletedForMe")),
+      forwardedFrom: value(message, "is_forwarded", "IsForwarded") ? "Forwarded" : undefined,
+      quote: value(message, "quoted_msg_id", "QuotedMsgID")
+        ? { id: String(value(message, "quoted_msg_id", "QuotedMsgID")), author: String(value(message, "quoted_sender_jid", "QuotedSenderJID") || "Reply"), text: "Quoted message" }
+        : undefined,
+      attachments: mediaType || localPath ? [{
+        id: "0",
+        contentType: mimeType || undefined,
+        filename: value(message, "filename", "Filename") || undefined,
+        size: 0,
+        kind: mediaKind(mediaType, mimeType),
+        localPath: localPath || undefined,
+      }] : [],
+      reactions: [],
+    };
+    this.messageCache.set(`${chatJid}:${id}`, { ...result, chatName });
+    return result;
+  }
+
+  async conversations(archived) {
+    const chats = (await this.allChats()).filter(chat => Boolean(value(chat, "archived", "Archived")) === archived);
+    const conversations = [];
+    for (const chat of chats) {
+      const jid = String(value(chat, "jid", "JID") || "");
+      if (!jid) continue;
+      const name = String(value(chat, "name", "Name") || jid);
+      let last;
+      try {
+        const page = await this.run(["messages", "list", "--chat", jid, "--limit", "1"]);
+        const rows = asArray(page.messages || page);
+        if (rows[0]) last = this.normalizeMessage(rows[0], jid, name);
+      } catch {}
+      conversations.push({
+        id: jid,
+        kind: isGroup(jid, value(chat, "kind", "Kind")) ? "group" : "direct",
+        target: jid,
+        name,
+        archived: Boolean(value(chat, "archived", "Archived")),
+        favorite: this.state.favourites.includes(jid) || Boolean(value(chat, "pinned", "Pinned")),
+        muted: Number(value(chat, "muted_until", "MutedUntil") || 0) === -1 || Number(value(chat, "muted_until", "MutedUntil") || 0) > Date.now() / 1000,
+        unread: Number(value(chat, "unread_count", "UnreadCount") || 0),
+        last,
+        typing: [],
+        expiration: 0,
+        members: [],
+        admins: [],
+        permissions: {},
+      });
+    }
+    return conversations;
+  }
+
+  async messages(jid, before) {
+    const args = ["messages", "list", "--chat", safeJid(jid), "--limit", "60", "--asc"];
+    if (before) args.push("--before", new Date(Number(before)).toISOString());
+    const page = await this.run(args);
+    const rows = asArray(page.messages || page);
+    const messages = rows.map(row => this.normalizeMessage(row, jid));
+    return { messages, hasMore: rows.length === 60, readThrough: 0, typing: [] };
+  }
+
+  cachedMessage(jid, id) {
+    return this.messageCache.get(`${jid}:${id}`);
+  }
+
+  async sendText(input) {
+    const target = safeJid(input.target);
+    const text = String(input.message || "").trim();
+    if (!text || text.length > 4000) throw new Error("Message must be 1–4000 characters");
+    const args = ["--lock-wait", "20s", "send", "text", "--to", target, "--message", text];
+    if (input.replyToId) args.push("--reply-to", safeMessageId(input.replyToId));
+    if (input.replyToSender) args.push("--reply-to-sender", safeJid(input.replyToSender));
+    const result = await this.run(args);
+    this.dialogCache.at = 0;
+    return {
+      id: String(result.id || randomUUID()),
+      conversationId: target,
+      direction: "out",
+      sender: "You",
+      text,
+      timestamp: Date.now(),
+      attachments: [],
+      reactions: [],
+      status: "sent",
+    };
+  }
+
+  async sendReaction(input) {
+    const target = safeJid(input.target);
+    const message = this.cachedMessage(target, safeMessageId(input.messageId));
+    const args = ["--lock-wait", "20s", "send", "react", "--to", target, "--id", safeMessageId(input.messageId), "--reaction", input.remove ? "" : String(input.emoji || "")];
+    if (isGroup(target) && message?.senderId) args.push("--sender", safeJid(message.senderId));
+    await this.run(args);
+  }
+
+  async updateConversation(input) {
+    const jid = safeJid(input.conversationId);
+    if (typeof input.archived === "boolean") await this.run(["--lock-wait", "20s", "chats", input.archived ? "archive" : "unarchive", "--chat", jid]);
+    if (typeof input.muted === "boolean") await this.run(["--lock-wait", "20s", "chats", input.muted ? "mute" : "unmute", "--chat", jid]);
+    if (typeof input.favourite === "boolean") {
+      this.state.favourites = input.favourite
+        ? [...new Set([...this.state.favourites, jid])]
+        : this.state.favourites.filter(item => item !== jid);
+      await this.persistState();
+    }
+    this.dialogCache.at = 0;
+  }
+
+  async sendAttachment(req, res, url) {
+    const target = safeJid(url.searchParams.get("target"));
+    const filename = basename(url.searchParams.get("filename") || "attachment");
+    const caption = String(url.searchParams.get("caption") || "");
+    const tempPath = join(this.mediaDir, `upload-${randomUUID()}-${filename}`);
+    const parts = [];
+    for await (const chunk of req) parts.push(chunk);
+    await writeFile(tempPath, Buffer.concat(parts), { mode: 0o600 });
+    try {
+      await this.run(["--lock-wait", "20s", "send", "file", "--to", target, "--file", tempPath, "--filename", filename, "--caption", caption]);
+      this.dialogCache.at = 0;
+      return this.json(res, 200, { sent: true });
+    } finally {
+      await rm(tempPath, { force: true });
+    }
+  }
+
+  async serveAttachment(res, jid, messageId) {
+    const cached = this.cachedMessage(safeJid(jid), safeMessageId(messageId));
+    let path = cached?.attachments?.[0]?.localPath;
+    if (!path || !(await stat(path).catch(() => null))?.isFile()) {
+      await this.run(["--lock-wait", "20s", "media", "download", "--chat", safeJid(jid), "--id", safeMessageId(messageId)]);
+      const refreshed = await this.messages(jid);
+      path = refreshed.messages.find(message => message.id === messageId)?.attachments?.[0]?.localPath;
+    }
+    const info = path && await stat(path).catch(() => null);
+    if (!info?.isFile()) throw new Error("WhatsApp media is unavailable");
+    const type = cached?.attachments?.[0]?.contentType || "application/octet-stream";
+    res.writeHead(200, { "content-type": type, "content-length": info.size, "cache-control": "private, max-age=3600", "x-content-type-options": "nosniff" });
+    createReadStream(path).pipe(res);
+  }
+
+  json(res, status, body) {
+    res.writeHead(status, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" });
+    res.end(JSON.stringify(body));
+  }
+
+  async handle(req, res, url, { body, json }) {
+    const root = "/api/services/whatsapp";
+    const pathname = url.pathname.slice(root.length) || "/";
+    if (pathname === "/status" && req.method === "GET") return json(res, 200, this.statusPayload());
+    if (pathname === "/auth/qr/start" && req.method === "POST") return json(res, 200, await this.beginSetup());
+    if (pathname === "/auth/qr/poll" && req.method === "GET") return json(res, 200, await this.pollSetup());
+    if (pathname === "/disconnect" && req.method === "POST") { await this.disconnect(); return json(res, 200, { disconnected: true }); }
+    if (!this.isLinked()) return json(res, 409, { error: "WhatsApp is not linked" });
+    if (pathname === "/conversations" && req.method === "GET") {
+      const archived = url.searchParams.get("archived") === "1";
+      const all = await this.allChats();
+      return json(res, 200, { conversations: await this.conversations(archived), archivedCount: all.filter(chat => Boolean(value(chat, "archived", "Archived"))).length });
+    }
+    if (pathname.startsWith("/messages/") && req.method === "GET") return json(res, 200, await this.messages(decodeURIComponent(pathname.slice(10)), url.searchParams.get("before")));
+    if (pathname === "/read" && req.method === "POST") {
+      const input = await body(req);
+      await this.run(["--lock-wait", "20s", "chats", "mark-read", "--chat", safeJid(input.conversationId)]);
+      this.dialogCache.at = 0;
+      return json(res, 200, { ok: true });
+    }
+    if (pathname === "/typing" && req.method === "POST") return json(res, 200, { ok: true });
+    if (pathname === "/send" && req.method === "POST") return json(res, 200, { message: await this.sendText(await body(req)) });
+    if (pathname === "/reaction" && req.method === "POST") { await this.sendReaction(await body(req)); return json(res, 200, { ok: true }); }
+    if (pathname === "/conversation" && req.method === "POST") { await this.updateConversation(await body(req)); return json(res, 200, { ok: true }); }
+    if (pathname === "/settings" && req.method === "GET") return json(res, 200, { settings: this.state.settings });
+    if (pathname === "/settings" && req.method === "POST") { this.state.settings = { ...this.state.settings, ...(await body(req)) }; await this.persistState(); return json(res, 200, { settings: this.state.settings }); }
+    if (pathname.startsWith("/search") && req.method === "GET") {
+      const query = url.searchParams.get("q") || "";
+      const result = await this.run(["messages", "search", query, "--limit", "50"]);
+      const rows = asArray(result.messages || result);
+      return json(res, 200, { results: rows.map(row => ({ conversationId: value(row, "chat_jid", "ChatJID"), timestamp: timestamp(value(row, "timestamp", "Timestamp")), sender: value(row, "sender_name", "SenderName") || "WhatsApp user", text: value(row, "text", "Text", "display_text", "DisplayText") || "" })) });
+    }
+    if (pathname === "/attachment/send" && req.method === "POST") return this.sendAttachment(req, res, url);
+    if (pathname.startsWith("/attachment/") && req.method === "GET") {
+      const [, , jid, messageId] = pathname.split("/");
+      return this.serveAttachment(res, decodeURIComponent(jid), decodeURIComponent(messageId));
+    }
+    return json(res, 404, { error: "Not found" });
+  }
+
+  async shutdown() {
+    this.authProcess?.kill("SIGTERM");
+    this.syncProcess?.kill("SIGTERM");
+  }
+}
