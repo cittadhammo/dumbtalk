@@ -10,6 +10,13 @@ export type ServiceStatus = {
 
 export type ServiceSetupStep =
 	| {
+			kind: 'choice';
+			token: string;
+			title: string;
+			instructions: string;
+			choices: { value: string; label: string; description?: string }[];
+	  }
+	| {
 			kind: 'qr';
 			token: string;
 			title: string;
@@ -83,6 +90,7 @@ export type ServiceCapabilities = {
 	forwarding: boolean;
 	stickers: boolean;
 	muting: boolean;
+	disappearingDurations?: number[];
 };
 
 export type UniversalSettings = {
@@ -183,6 +191,8 @@ export type MessagePage = {
 	hasMore: boolean;
 	readThrough: number;
 	typingNames: string[];
+	allowedReactions?: string[];
+	conversation?: Partial<UniversalConversation>;
 };
 
 export type MessagingService = {
@@ -195,6 +205,10 @@ export type MessagingService = {
 	listConversations: (options: { archived: boolean }) => Promise<ConversationPage>;
 	listMessages: (conversation: UniversalConversation, options?: { before?: number }) => Promise<MessagePage>;
 	markRead: (conversation: UniversalConversation) => Promise<void>;
+	getMessageDetails: (
+		conversation: UniversalConversation,
+		message: UniversalMessage,
+	) => Promise<UniversalMessage>;
 	setTyping: (conversation: UniversalConversation, active: boolean) => Promise<void>;
 	sendText: (
 		conversation: UniversalConversation,

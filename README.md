@@ -1,16 +1,16 @@
 # DumbTalk
 
-A small, self-hosted, D-pad-first messaging client for QVGA CloudPhone feature phones. Signal is
-currently supported through a private `signal-cli` container; Telegram and other services are
-planned. DumbTalk is unofficial and is not affiliated with Signal or CloudMosa.
+A small, self-hosted, D-pad-first messaging client for QVGA CloudPhone feature phones. Signal and
+Telegram share one inbox; each account remains in its own isolated service data directory.
+DumbTalk is unofficial and is not affiliated with Signal, Telegram, or CloudMosa.
 
 DumbTalk supports contacts, groups, text and voice messages, replies, reactions, editing,
-deletion, receipts, typing, archives, disappearing messages, polls, pins, inline media, search,
-avatars, group management, and Signal safety numbers.
+deletion, receipts, typing, synced archives, disappearing messages, polls, pins, inline media,
+attachments, cross-service forwarding, search, avatars, group management, and Signal safety
+numbers. Menus hide operations that a service does not support.
 
 Signal does not provide linked devices with existing message history, so DumbTalk only shows
-messages received or sent after it is linked. Calls and sending arbitrary attachments are not
-supported.
+messages received or sent after it is linked. Calls are not supported.
 
 ## Run it
 
@@ -21,7 +21,12 @@ to `.env`, then set:
 WIDGET_TOKEN=generate-with-openssl-rand-base64-32-and-convert-to-base64url
 PUBLIC_ORIGIN=https://signal.example.com
 DEVICE_NAME=DumbTalk
+TELEGRAM_API_ID=123456
+TELEGRAM_API_HASH=your-api-hash
 ```
+
+The Telegram values are optional and come from [my.telegram.org](https://my.telegram.org). Leave
+them empty for a Signal-only instance.
 
 Start DumbTalk:
 
@@ -31,11 +36,12 @@ docker compose logs -f cloudphone-signal
 ```
 
 It listens on `127.0.0.1:8787` by default. Point your HTTPS reverse proxy at that address and
-set the CloudPhone widget URL to `PUBLIC_ORIGIN/#WIDGET_TOKEN`. Open the widget, choose
-**Generate QR**, then scan it from Signal → Settings → Linked devices. Never expose signal-cli's
-internal port `7583`.
+set the CloudPhone widget URL to `PUBLIC_ORIGIN/#WIDGET_TOKEN`. Connect services from DumbTalk’s
+Services screen. Signal uses its linked-device QR; Telegram supports either its Devices QR or a
+phone number, Telegram login code, and optional two-step-verification password. Never expose
+signal-cli's internal port `7583`.
 
-Linked-device keys, cached messages, and decrypted media are stored in `./data`. Keep that
+Signal linked-device keys, the Telegram session, cached messages, and decrypted media are stored in `./data`. Keep that
 directory and `.env` private and backed up. Anyone with either the data or `WIDGET_TOKEN` may be
 able to read your messages. The fragment token is intentionally not sent in HTTP request paths,
 DNS, or referrers; the client sends it only in same-origin API authorization headers.

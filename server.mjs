@@ -6,6 +6,7 @@ import { randomBytes, timingSafeEqual } from "node:crypto";
 import { spawn } from "node:child_process";
 import QRCode from "qrcode";
 import { prepareSignalCli, rollBackSignalCli } from "./signal-cli-updater.mjs";
+import { TelegramService } from "./telegram-service.mjs";
 
 const PORT = Number(process.env.PORT || 8080);
 const DATA_DIR = process.env.DATA_DIR || "/data";
@@ -34,6 +35,12 @@ const typingState = new Map();
 const identityNames = new Map();
 const viewOnceTokens = new Map();
 let stateWrite = Promise.resolve();
+const telegram = new TelegramService({
+  dataDir: DATA_DIR,
+  apiId: process.env.TELEGRAM_API_ID,
+  apiHash: process.env.TELEGRAM_API_HASH,
+  log: (message, extra) => console.log(`[dumbtalk] ${message}`, extra || ""),
+});
 
 function versionAtLeast(version, minimum) {
   const left = String(version).split(".").map(Number); const right = minimum.split(".").map(Number);
@@ -73,6 +80,7 @@ if (!process.env.PUBLIC_ORIGIN?.startsWith("https://")) {
 await mkdir(APP_DIR, { recursive: true });
 await mkdir(MEDIA_DIR, { recursive: true });
 await mkdir(SIGNAL_DIR, { recursive: true });
+await telegram.initialize();
 try {
   messages = JSON.parse(await readFile(join(APP_DIR, "messages.json"), "utf8"));
 } catch {}
@@ -542,6 +550,10 @@ async function api(req, res, url) {
   }
   if (req.method !== "GET" && !requireSameOrigin(req)) return json(res, 403, { error: "Origin rejected" });
 
+  if (url.pathname.startsWith("/api/services/telegram")) {
+    return telegram.handle(req, res, url, { body, json });
+  }
+
   if (url.pathname === "/api/mindful" && req.method === "GET") {
     const day = url.searchParams.get("day");
     return json(res, 200, { usage: day ? appState.mindfulUsage?.[day] || null : null });
@@ -565,9 +577,12 @@ async function api(req, res, url) {
   }
   if (url.pathname === "/api/status" && req.method === "GET") {
     const accounts = signalReady ? await getAccounts() : [];
+    const telegramStatus = telegram.statusPayload();
     return json(res, 200, {
       signalReady,
       linked: accounts.length > 0,
+      anyLinked: accounts.length > 0 || telegramStatus.connected,
+      telegram: telegramStatus,
       accounts,
       receive: { ...receiveStats, subscribed: receiveStats.connected },
       settings: appState.settings,
@@ -1275,6 +1290,7 @@ function shutdown() {
   signalReady = false;
   server.close();
   signalProcess?.kill("SIGTERM");
+  void telegram.shutdown();
   setTimeout(() => process.exit(0), 3000).unref();
 }
 process.on("SIGTERM", shutdown);

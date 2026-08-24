@@ -25,6 +25,7 @@ const timers = [
 	{ label: '1 hour', seconds: 3_600 },
 	{ label: '1 day', seconds: 86_400 },
 	{ label: '1 week', seconds: 604_800 },
+	{ label: '30 days', seconds: 2_592_000 },
 ];
 
 function OptionButton({
@@ -70,6 +71,9 @@ export function ChatOptions({
 }: Props) {
 	const [showExpiration, setShowExpiration] = useState(false);
 	const currentTimer = timers.find((timer) => timer.seconds === conversation.expiration)?.label ?? 'On';
+	const availableTimers = capabilities?.disappearingDurations
+		? timers.filter((timer) => capabilities.disappearingDurations?.includes(timer.seconds))
+		: timers;
 
 	return (
 		<main class={styles.screen}>
@@ -150,7 +154,7 @@ export function ChatOptions({
 					<div class={styles.dropdown}>
 						<p class={styles.heading}>Choose duration</p>
 						<div class={styles.timerGrid}>
-							{timers.map((timer) => (
+							{availableTimers.map((timer) => (
 								<FocusButton
 									id={`chat-expiration-${timer.seconds}`}
 									grid="expiration-options"

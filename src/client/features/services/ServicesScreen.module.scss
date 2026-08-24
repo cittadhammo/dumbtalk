@@ -27,6 +27,12 @@
 	padding: 8px 7px;
 }
 
+.choiceList {
+	display: grid;
+	gap: 5px;
+	width: 100%;
+}
+
 .intro {
 	margin: 2px 3px 7px;
 	color: tokens.$muted;

@@ -26,11 +26,12 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm install --omit=dev && npm cache clean --force
 COPY server.mjs ./
+COPY telegram-service.mjs ./
 COPY signal-cli-updater.mjs ./
 COPY --from=client-build /build/public-next ./public
 COPY docker-entrypoint.sh /usr/local/bin/cloudphone-signal-entrypoint
 
-RUN mkdir -p /data/signal-cli /data/app \
+RUN mkdir -p /data/signal-cli /data/app /data/telegram \
     && chown -R node:node /data /app \
     && chmod 0755 /usr/local/bin/cloudphone-signal-entrypoint
 

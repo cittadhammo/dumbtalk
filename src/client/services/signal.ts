@@ -280,6 +280,10 @@ export const signalService: MessagingService = {
 		});
 	},
 
+	async getMessageDetails(_conversation, message): Promise<UniversalMessage> {
+		return message;
+	},
+
 	async setTyping(conversation, active): Promise<void> {
 		const [, target] = conversation.remoteId.split(/:(.*)/s);
 		await api('/api/typing', {

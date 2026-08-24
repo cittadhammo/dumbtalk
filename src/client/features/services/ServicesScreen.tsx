@@ -101,7 +101,11 @@ function ServiceList({
 						autoFocus={index === 0}
 						onClick={() => onManage(status.id)}
 					>
-						<span class={`${styles.serviceIcon} ${styles.signalIcon}`}>S</span>
+						<span
+							class={`${styles.serviceIcon} ${status.id === 'signal' ? styles.signalIcon : styles.telegramIcon}`}
+						>
+							{status.id === 'signal' ? 'S' : 'T'}
+						</span>
 						<span class={styles.body}>
 							<strong>{status.label}</strong>
 							<span>{status.accountLabel ?? (status.ready ? 'Ready to link' : 'Starting…')}</span>
@@ -111,14 +115,6 @@ function ServiceList({
 						</span>
 					</FocusButton>
 				))}
-				<div class={`${styles.card} ${styles.unavailable}`} aria-disabled="true">
-					<span class={`${styles.serviceIcon} ${styles.telegramIcon}`}>T</span>
-					<span class={styles.body}>
-						<strong>Telegram</strong>
-						<span>Coming next</span>
-					</span>
-					<span class={styles.soon}>Soon</span>
-				</div>
 			</section>
 		</main>
 	);
@@ -152,7 +148,11 @@ function ManageServiceScreen({
 		<main class={styles.screen}>
 			<ScreenHeader>{service.label}</ScreenHeader>
 			<section class={styles.detail}>
-				<span class={`${styles.largeIcon} ${styles.signalIcon}`}>S</span>
+				<span
+					class={`${styles.largeIcon} ${service.id === 'signal' ? styles.signalIcon : styles.telegramIcon}`}
+				>
+					{service.id === 'signal' ? 'S' : 'T'}
+				</span>
 				<h1>{service.label}</h1>
 				<p class={status?.connected ? styles.goodStatus : styles.quietStatus}>
 					{status?.connected ? 'Connected' : status?.ready ? 'Not linked' : 'Service starting…'}
@@ -166,7 +166,7 @@ function ManageServiceScreen({
 						autoFocus
 						onClick={action}
 					>
-						{status.connected ? 'Unlink Signal' : 'Link Signal'}
+						{status.connected ? `Disconnect ${service.label}` : `Connect ${service.label}`}
 					</FocusButton>
 				)}
 			</section>
@@ -227,6 +227,19 @@ function SetupServiceScreen({
 		setInputValue('');
 	}, [step?.kind === 'input' ? step.token : undefined]);
 
+	const choose = (value: string) => {
+		if (step?.kind !== 'choice' || advancing) return;
+		setAdvancing(true);
+		setError(undefined);
+		void service
+			.advanceSetup(step, value)
+			.then(setStep)
+			.catch((reason: unknown) => {
+				setError(reason instanceof Error ? reason.message : 'Unable to continue setup');
+			})
+			.finally(() => setAdvancing(false));
+	};
+
 	const submitInput = () => {
 		if (step?.kind !== 'input' || !inputValue.trim() || advancing) return;
 		setAdvancing(true);
@@ -246,7 +259,9 @@ function SetupServiceScreen({
 				? { label: 'Retry', onPress: activate }
 				: step?.kind === 'complete'
 					? { label: 'Done', onPress: activate }
-					: undefined,
+					: step?.kind === 'choice'
+						? { label: 'Select', onPress: activate }
+						: undefined,
 			right: { label: 'Cancel', onPress: onBack },
 		},
 		[activate, error, onBack, step?.kind],
@@ -259,9 +274,32 @@ function SetupServiceScreen({
 				{!step && !error && <p class={styles.loading}>Generating secure link…</p>}
 				{step?.kind === 'qr' && (
 					<>
-						<img class={styles.qr} src={step.image} alt="Signal linking QR code" />
+						<img class={styles.qr} src={step.image} alt={`${service.label} linking QR code`} />
 						<p>{step.instructions}</p>
-						<p class={styles.waiting}>Waiting for Signal…</p>
+						<p class={styles.waiting}>Waiting for {service.label}…</p>
+					</>
+				)}
+				{step?.kind === 'choice' && (
+					<>
+						<h1>{step.title}</h1>
+						<p>{step.instructions}</p>
+						<div class={styles.choiceList}>
+							{step.choices.map((choice, index) => (
+								<FocusButton
+									id={`setup-choice-${choice.value}`}
+									type="button"
+									class={styles.card}
+									autoFocus={index === 0}
+									disabled={advancing}
+									onClick={() => choose(choice.value)}
+								>
+									<span class={styles.body}>
+										<strong>{choice.label}</strong>
+										{choice.description && <span>{choice.description}</span>}
+									</span>
+								</FocusButton>
+							))}
+						</div>
 					</>
 				)}
 				{step?.kind === 'input' && (
@@ -346,7 +384,7 @@ function DisconnectServiceScreen({
 			.then(onComplete)
 			.catch((reason: unknown) => {
 				setBusy(false);
-				setError(reason instanceof Error ? reason.message : 'Unable to unlink Signal');
+				setError(reason instanceof Error ? reason.message : `Unable to disconnect ${service.label}`);
 			});
 	};
 
@@ -360,11 +398,11 @@ function DisconnectServiceScreen({
 
 	return (
 		<main class={styles.screen}>
-			<ScreenHeader>Unlink Signal?</ScreenHeader>
-			<section class={styles.confirm}>
-				<h1>Remove this device</h1>
-				<p>DumbTalk’s cached Signal messages and media will be erased from this server.</p>
-				<p class={styles.note}>Also remove DumbTalk from Signal’s Linked devices list.</p>
+			<ScreenHeader>Disconnect {service.label}?</ScreenHeader>
+				<section class={styles.confirm}>
+					<h1>Remove this account</h1>
+					<p>DumbTalk’s cached {service.label} media will be erased from this server.</p>
+					<p class={styles.note}>You can connect the account again later.</p>
 				{error && <p class={styles.error}>{error}</p>}
 				<FocusButton
 					id="confirm-disconnect"
@@ -374,7 +412,7 @@ function DisconnectServiceScreen({
 					disabled={busy}
 					onClick={disconnect}
 				>
-					{busy ? 'Unlinking…' : 'Unlink Signal'}
+					{busy ? 'Disconnecting…' : `Disconnect ${service.label}`}
 				</FocusButton>
 			</section>
 		</main>

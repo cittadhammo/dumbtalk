@@ -108,3 +108,12 @@ test('universal messaging contract covers rich messages and service management',
 	assert.doesNotMatch(server, /rpc\("unregister"/);
 	assert.match(server, /input\.confirm !== "disconnect-signal"/);
 });
+
+test('Telegram is registered as a universal messaging service', async () => {
+	const registry = await readFile(new URL('../src/client/services/registry.ts', import.meta.url), 'utf8');
+	const adapter = await readFile(new URL('../src/client/services/telegram.ts', import.meta.url), 'utf8');
+	assert.match(registry, /telegramService/);
+	assert.match(adapter, /kind: 'choice'/);
+	assert.match(adapter, /allowedReactions/);
+	assert.match(adapter, /readThrough/);
+});

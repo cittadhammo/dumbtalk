@@ -20,6 +20,7 @@ import styles from './styles/App.module.scss';
 type Status = {
 	signalReady: boolean;
 	linked: boolean;
+	anyLinked?: boolean;
 };
 
 function StartupScreen() {
@@ -78,7 +79,6 @@ function UnifiedApp() {
 		return (
 			<ServicesScreen
 				onBack={() => setScreen({ name: 'conversations', archived: false })}
-				onDisconnected={() => setScreen({ name: 'onboarding' })}
 			/>
 		);
 	}
@@ -187,7 +187,7 @@ function Boot() {
 		return <StartupScreen />;
 	}
 
-	if (!status.linked) {
+	if (!(status.anyLinked ?? status.linked)) {
 		return (
 			<MessagingServiceProvider>
 				<ServicesScreen onboarding onConnected={load} />

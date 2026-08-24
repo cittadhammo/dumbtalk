@@ -7,6 +7,7 @@ import { useFocusManager } from '../../platform/Focus';
 import { useSoftkeys } from '../../platform/Softkeys';
 import { useMessagingServices } from '../../services/ServiceContext';
 import type {
+	MessagingService,
 	UniversalConversation,
 	UniversalSearchResult,
 	UniversalSettings,
@@ -14,6 +15,31 @@ import type {
 import styles from './AppScreens.module.scss';
 
 type BackProps = { onBack: () => void };
+
+function ServiceChooser({
+	services,
+	selected,
+	onSelect,
+}: {
+	services: MessagingService[];
+	selected?: string;
+	onSelect: (service: MessagingService) => void;
+}) {
+	if (services.length < 2) return null;
+	return (
+		<div class={styles.serviceChooser}>
+			{services.map((service) => (
+				<FocusButton
+					id={`choose-service-${service.id}`}
+					class={selected === service.id ? styles.selectedService : undefined}
+					onClick={() => onSelect(service)}
+				>
+					{service.label}
+				</FocusButton>
+			))}
+		</div>
+	);
+}
 
 function ScreenFrame({ title, children }: { title: string; children: ComponentChildren }) {
 	return (
@@ -199,16 +225,18 @@ export function SearchScreen({
 
 export function ComposeScreen({ onBack, onOpen }: BackProps & { onOpen: (chat: UniversalConversation) => void }) {
 	const { services } = useMessagingServices();
-	const service = services[0];
+	const [serviceId, setServiceId] = useState<string>();
+	const service = services.find((candidate) => candidate.id === serviceId) ?? services[0];
 	const [address, setAddress] = useState('');
 	const [contacts, setContacts] = useState<UniversalConversation[]>([]);
 	useScreenSoftkeys(onBack);
 
 	useEffect(() => {
+		if (!serviceId && services[0]) setServiceId(services[0].id);
 		void Promise.all(services.map((item) => item.listConversations({ archived: false }))).then((pages) =>
 			setContacts(pages.flatMap((page) => page.conversations).filter((item) => item.kind === 'direct')),
 		);
-	}, [services]);
+	}, [serviceId, services]);
 
 	const openAddress = () => {
 		if (service && address.trim()) onOpen(service.createDirect(address));
@@ -216,21 +244,26 @@ export function ComposeScreen({ onBack, onOpen }: BackProps & { onOpen: (chat: U
 
 	return (
 		<ScreenFrame title="New message">
+			<ServiceChooser
+				services={services}
+				selected={service?.id}
+				onSelect={(selected) => setServiceId(selected.id)}
+			/>
 			<div class={styles.inputRow}>
 				<FocusInput
 					id="compose-address"
 					autoFocus
 					value={address}
-					placeholder="Phone number"
+					placeholder={service?.id === 'telegram' ? 'Username or phone' : 'Phone number'}
 					onInput={(event) => setAddress(event.currentTarget.value)}
 				/>
 				<FocusButton id="compose-open" onClick={openAddress}>›</FocusButton>
 			</div>
 			<p class={styles.heading}>Contacts</p>
 			<div class={styles.results}>
-				{contacts.map((contact) => (
+				{contacts.filter((contact) => !service || contact.serviceId === service.id).map((contact) => (
 					<FocusButton id={`compose-${contact.id}`} onClick={() => onOpen(contact)}>
-						{contact.title}
+						{contact.title} <small>{contact.serviceId}</small>
 					</FocusButton>
 				))}
 			</div>
@@ -240,7 +273,8 @@ export function ComposeScreen({ onBack, onOpen }: BackProps & { onOpen: (chat: U
 
 export function NewGroupScreen({ onBack }: BackProps) {
 	const { services } = useMessagingServices();
-	const service = services[0];
+	const [serviceId, setServiceId] = useState<string>();
+	const service = services.find((candidate) => candidate.id === serviceId) ?? services[0];
 	const [name, setName] = useState('');
 	const [contacts, setContacts] = useState<UniversalConversation[]>([]);
 	const [members, setMembers] = useState<string[]>([]);
@@ -249,10 +283,12 @@ export function NewGroupScreen({ onBack }: BackProps) {
 
 	useEffect(() => {
 		if (!service) return;
+		if (!serviceId) setServiceId(service.id);
+		setMembers([]);
 		void service.listConversations({ archived: false }).then((page) =>
 			setContacts(page.conversations.filter((item) => item.kind === 'direct' && !item.isNoteToSelf)),
 		);
-	}, [service]);
+	}, [service, serviceId]);
 
 	const create = () => {
 		if (!service || !name.trim() || !members.length) return;
@@ -263,6 +299,11 @@ export function NewGroupScreen({ onBack }: BackProps) {
 
 	return (
 		<ScreenFrame title="New group">
+			<ServiceChooser
+				services={services}
+				selected={service?.id}
+				onSelect={(selected) => setServiceId(selected.id)}
+			/>
 			<FocusInput
 				id="group-name"
 				autoFocus
@@ -303,18 +344,22 @@ const expirationOptions = [
 	{ value: 3600, label: '1 hour' },
 	{ value: 86400, label: '1 day' },
 	{ value: 604800, label: '1 week' },
+	{ value: 2592000, label: '30 days' },
 ];
 
 export function SettingsScreen({ onBack }: BackProps) {
 	const { services } = useMessagingServices();
-	const service = services[0];
+	const [serviceId, setServiceId] = useState<string>();
+	const service = services.find((candidate) => candidate.id === serviceId) ?? services[0];
 	const [settings, setSettings] = useState<UniversalSettings>();
 	const [error, setError] = useState<string>();
 	useScreenSoftkeys(onBack);
 
 	useEffect(() => {
+		if (!serviceId && service) setServiceId(service.id);
+		setSettings(undefined);
 		void service?.getSettings().then(setSettings).catch((reason) => setError(String(reason)));
-	}, [service]);
+	}, [service, serviceId]);
 
 	const toggle = (key: keyof Pick<UniversalSettings, 'sendReadReceipts' | 'sendTypingIndicators' | 'linkPreviews'>) => {
 		setSettings((current) => current ? { ...current, [key]: !current[key] } : current);
@@ -331,7 +376,12 @@ export function SettingsScreen({ onBack }: BackProps) {
 	};
 
 	return (
-		<ScreenFrame title="Signal settings">
+		<ScreenFrame title={`${service?.label ?? ''} settings`}>
+			<ServiceChooser
+				services={services}
+				selected={service?.id}
+				onSelect={(selected) => setServiceId(selected.id)}
+			/>
 			{!settings && !error && <p>Loading…</p>}
 			{settings && (
 				<>
@@ -363,7 +413,9 @@ export function SettingsScreen({ onBack }: BackProps) {
 					</div>
 					<p class={styles.heading}><AppIcon name="timer" /> Default disappearing messages</p>
 					<div class={`${styles.grid} ${styles.choiceGrid}`}>
-						{expirationOptions.map((option) => (
+						{expirationOptions
+							.filter((option) => service?.id !== 'telegram' || [0, 86400, 604800, 2592000].includes(option.value))
+							.map((option) => (
 							<FocusButton
 								id={`setting-expiration-${option.value}`}
 								grid="settings-expiration"

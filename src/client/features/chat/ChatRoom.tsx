@@ -22,6 +22,7 @@ import { readMessagePage, writeMessagePage } from '../../cache/snapshots';
 import { useFocusManager, type ArrowKey } from '../../platform/Focus';
 import { useSoftkeys } from '../../platform/Softkeys';
 import { useMessagingServices } from '../../services/ServiceContext';
+import { widgetToken } from '../../api/client';
 import type {
 	MessagePage,
 	ServiceCapabilities,
@@ -56,6 +57,7 @@ function MessageActions({
 	onVote,
 	onClosePoll,
 	favouriteReactions,
+	allowedReactions,
 }: {
 	message: UniversalMessage;
 	capabilities?: ServiceCapabilities;
@@ -70,6 +72,7 @@ function MessageActions({
 	onVote: (options: number[]) => void;
 	onClosePoll: () => void;
 	favouriteReactions: string[];
+	allowedReactions?: string[];
 }) {
 	const detailsRef = useRef<HTMLButtonElement>(null);
 	const reactions = expanded
@@ -200,6 +203,11 @@ function MessageActions({
 				'👋',
 			]
 		: ['👍', '❤️', '😂', '😮', '😢', '🙏'];
+	const availableReactions = allowedReactions ?? reactions;
+	const canReact = capabilities?.reactions !== false && availableReactions.length > 0;
+	const visibleReactions = expanded
+		? availableReactions
+		: reactions.filter((emoji) => availableReactions.includes(emoji)).slice(0, 6);
 	const [pollChoices, setPollChoices] = useState<number[]>([]);
 
 	if (expanded) {
@@ -207,7 +215,7 @@ function MessageActions({
 			<main class={styles.actionScreen}>
 				<header class={styles.header}>Choose reaction</header>
 				<section class={styles.reactionPicker}>
-					{reactions.map((emoji) => (
+					{visibleReactions.map((emoji) => (
 						<FocusButton
 							id={`message-all-reaction-${emoji}`}
 							grid="all-reactions"
@@ -237,10 +245,10 @@ function MessageActions({
 					<strong>{message.direction === 'outgoing' ? 'You' : (message.sender ?? 'Message')}</strong>
 					{message.text || attachmentLabel(message) || 'Message'}
 				</FocusButton>
-				{capabilities?.reactions !== false && <p class={styles.actionHeading}>Quick reaction</p>}
-				{capabilities?.reactions !== false && (
+				{canReact && <p class={styles.actionHeading}>Quick reaction</p>}
+				{canReact && (
 					<div class={styles.reactionGrid}>
-						{reactions.slice(0, 6).map((emoji) => (
+						{visibleReactions.map((emoji) => (
 							<FocusButton
 								id={`message-reaction-${emoji}`}
 								grid="quick-reactions"
@@ -254,11 +262,11 @@ function MessageActions({
 						))}
 					</div>
 				)}
-				{capabilities?.reactions !== false && favouriteReactions.length > 0 && (
+				{canReact && favouriteReactions.some((emoji) => availableReactions.includes(emoji)) && (
 					<>
 						<p class={styles.actionHeading}>Your frequent reactions</p>
 						<div class={styles.reactionGrid}>
-							{favouriteReactions.map((emoji) => (
+							{favouriteReactions.filter((emoji) => availableReactions.includes(emoji)).map((emoji) => (
 								<FocusButton
 									id={`message-favourite-reaction-${emoji}`}
 									grid="favourite-reactions"
@@ -273,7 +281,7 @@ function MessageActions({
 						</div>
 					</>
 				)}
-				{capabilities?.reactions !== false && (
+				{canReact && (
 					<FocusButton
 						id="message-more-reactions"
 						type="button"
@@ -424,7 +432,7 @@ function MessageActions({
 }
 
 export function ChatRoom({ conversation, initialMessage, onBack }: Props) {
-	const { serviceFor } = useMessagingServices();
+	const { services, serviceFor } = useMessagingServices();
 	const { activate, focus } = useFocusManager();
 	const service = serviceFor(conversation.serviceId);
 	const [currentConversation, setCurrentConversation] = useState({
@@ -500,6 +508,9 @@ export function ChatRoom({ conversation, initialMessage, onBack }: Props) {
 			setError(undefined);
 			if (before) captureAnchor();
 			const next = await service.listMessages(conversation, { before });
+			if (next.conversation) {
+				setCurrentConversation((current) => ({ ...current, ...next.conversation }));
+			}
 			setPage((previous) => {
 				if (!previous) {
 					writeMessagePage(conversation.id, next);
@@ -769,7 +780,12 @@ export function ChatRoom({ conversation, initialMessage, onBack }: Props) {
 
 	const openMessageActions = () => {
 		const message = page?.messages.find((candidate) => candidate.id === selectedMessageId);
-		if (message) setActionMessage(message);
+		if (!message) return;
+		setActionMessage(message);
+		void service
+			.getMessageDetails(conversation, message)
+			.then(setActionMessage)
+			.catch(() => undefined);
 	};
 
 	const openMedia = (message: UniversalMessage, index = 0) => {
@@ -895,16 +911,55 @@ export function ChatRoom({ conversation, initialMessage, onBack }: Props) {
 	const beginForward = () => {
 		if (!actionMessage) return;
 		const source = actionMessage;
-		void Promise.all([
-			service.listConversations({ archived: false }),
-			service.listConversations({ archived: true }),
-		])
-			.then(([active, archived]) => {
-				setDestinations([...active.conversations, ...archived.conversations]);
+		void Promise.all(
+			services.flatMap((candidate) => [
+				candidate.listConversations({ archived: false }),
+				candidate.listConversations({ archived: true }),
+			]),
+		)
+			.then((pages) => {
+				setDestinations(pages.flatMap((page) => page.conversations));
 				setForwarding(source);
 				setActionMessage(undefined);
 			})
 			.catch((reason) => setError(reason instanceof Error ? reason.message : 'Unable to load chats'));
+	};
+
+	const forwardTo = async (message: UniversalMessage, target: UniversalConversation) => {
+		if (target.serviceId === conversation.serviceId) {
+			await service.forwardMessage(message, target);
+			return;
+		}
+
+		const targetService = serviceFor(target.serviceId);
+		const sender = message.direction === 'outgoing' ? 'You' : message.sender || conversation.title;
+		const attribution = `Forwarded from ${sender} via ${conversation.serviceId}`;
+		const text = [attribution, message.text].filter(Boolean).join('\n\n');
+		const media = [
+			...message.attachments,
+			...(message.stickerPath
+				? [{ id: 'sticker', kind: 'image' as const, path: message.stickerPath, filename: 'sticker.webp' }]
+				: []),
+		].filter((attachment) => attachment.path);
+
+		if (!media.length) {
+			await targetService.sendText(target, text || attribution);
+			return;
+		}
+
+		for (const [index, attachment] of media.entries()) {
+			const response = await fetch(attachment.path!, {
+				headers: { authorization: `Bearer ${widgetToken()}` },
+			});
+			if (!response.ok) throw new Error('Unable to retrieve forwarded media');
+			const blob = await response.blob();
+			const file = new File(
+				[blob],
+				attachment.filename || `forwarded-${index + 1}`,
+				{ type: attachment.contentType || blob.type },
+			);
+			await targetService.sendAttachment(target, file, index === 0 ? text : '');
+		}
 	};
 
 	const jumpToSearchResult = (result: UniversalSearchResult) => {
@@ -1022,16 +1077,18 @@ export function ChatRoom({ conversation, initialMessage, onBack }: Props) {
 
 	useEffect(() => {
 		if (!actionMessage) return;
+		const firstReaction = page?.allowedReactions?.[0] ?? '👍';
+		const reactionsUnavailable = page?.allowedReactions?.length === 0;
 		window.requestAnimationFrame(() =>
 			focus(
 				expandedReactions
-					? 'message-all-reaction-👍'
-					: capabilities?.reactions === false
+					? `message-all-reaction-${firstReaction}`
+					: capabilities?.reactions === false || reactionsUnavailable
 						? 'message-action-reply'
-						: 'message-reaction-👍',
+						: `message-reaction-${firstReaction}`,
 			),
 		);
-	}, [actionMessage?.id, capabilities?.reactions, expandedReactions, focus]);
+	}, [actionMessage?.id, capabilities?.reactions, expandedReactions, focus, page?.allowedReactions]);
 
 	useEffect(() => {
 		if (!showOptions || optionPanel) return;
@@ -1180,6 +1237,7 @@ export function ChatRoom({ conversation, initialMessage, onBack }: Props) {
 					.sort(([, first], [, second]) => second - first)
 					.slice(0, 6)
 					.map(([emoji]) => emoji)}
+				allowedReactions={page?.allowedReactions}
 			/>
 		);
 	}
@@ -1233,8 +1291,7 @@ export function ChatRoom({ conversation, initialMessage, onBack }: Props) {
 				title="Forward to"
 				conversations={destinations}
 				onChoose={(target) => {
-					void service
-						.forwardMessage(forwarding, target)
+					void forwardTo(forwarding, target)
 						.then(() => {
 							const messageId = forwarding.id;
 							setForwarding(undefined);

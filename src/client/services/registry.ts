@@ -1,7 +1,8 @@
 import { signalService } from './signal';
+import { telegramService } from './telegram';
 import type { MessagingService, ServiceId } from './contracts';
 
-const services: MessagingService[] = [signalService];
+const services: MessagingService[] = [signalService, telegramService];
 
 export function installedServices(): MessagingService[] {
 	return services;

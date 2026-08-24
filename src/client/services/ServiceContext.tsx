@@ -13,17 +13,37 @@ type ContextValue = {
 const ServiceContext = createContext<ContextValue | null>(null);
 
 export function MessagingServiceProvider({ children }: { children: ComponentChildren }) {
-	const services = useMemo(() => installedServices(), []);
+	const availableServices = useMemo(() => installedServices(), []);
 	const [statuses, setStatuses] = useState<ServiceStatus[]>([]);
+	const services = useMemo(
+		() =>
+			availableServices.filter((service) =>
+				statuses.some((status) => status.id === service.id && status.connected),
+			),
+		[availableServices, statuses],
+	);
 
 	const refreshStatuses = async () => {
-		const next = await Promise.all(services.map((service) => service.getStatus()));
+		const next = await Promise.all(
+			availableServices.map(async (service) => {
+				try {
+					return await service.getStatus();
+				} catch {
+					return {
+						id: service.id,
+						label: service.label,
+						connected: false,
+						ready: false,
+					};
+				}
+			}),
+		);
 		setStatuses(next);
 	};
 
 	useEffect(() => {
 		void refreshStatuses();
-	}, []);
+	}, [availableServices]);
 
 	return (
 		<ServiceContext.Provider
