@@ -348,6 +348,21 @@
 	padding: 7px;
 }
 
+.editForm {
+	display: grid;
+	gap: 7px;
+	padding: 8px;
+}
+
+.editForm input {
+	width: 100%;
+	height: 34px;
+	padding: 6px;
+	background: #07100d;
+	border: 1px solid #42665a;
+	color: tokens.$text;
+}
+
 .actionSummary {
 	margin: 0 0 7px;
 	padding: 6px;

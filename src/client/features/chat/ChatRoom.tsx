@@ -88,10 +88,16 @@ function MessageActions({
 	message,
 	onReply,
 	onReact,
+	onEdit,
+	onDelete,
+	onPin,
 }: {
 	message: UniversalMessage;
 	onReply: () => void;
 	onReact: (emoji: string) => void;
+	onEdit: () => void;
+	onDelete: () => void;
+	onPin: () => void;
 }) {
 	const reactions = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
 
@@ -112,6 +118,22 @@ function MessageActions({
 					<span class={styles.actionIcon}>↩</span>
 					Reply
 				</FocusButton>
+				<FocusButton id="message-action-pin" type="button" class={styles.action} onClick={onPin}>
+					<span class={styles.actionIcon}>⌖</span>
+					{message.pinned ? 'Unpin message' : 'Pin message'}
+				</FocusButton>
+				{message.direction === 'outgoing' && (
+					<>
+						<FocusButton id="message-action-edit" type="button" class={styles.action} onClick={onEdit}>
+							<span class={styles.actionIcon}>✎</span>
+							Edit message
+						</FocusButton>
+						<FocusButton id="message-action-delete" type="button" class={styles.action} onClick={onDelete}>
+							<span class={styles.actionIcon}>⌫</span>
+							Delete for everyone
+						</FocusButton>
+					</>
+				)}
 				<p class={styles.actionHeading}>Quick reaction</p>
 				<div class={styles.reactionGrid}>
 					{reactions.map((emoji) => (
@@ -146,6 +168,8 @@ export function ChatRoom({ conversation, onBack }: Props) {
 	const [actionMessage, setActionMessage] = useState<UniversalMessage>();
 	const [showOptions, setShowOptions] = useState(false);
 	const [viewer, setViewer] = useState<{ message: UniversalMessage; index: number }>();
+	const [editing, setEditing] = useState<UniversalMessage>();
+	const [editDraft, setEditDraft] = useState('');
 	const [replying, setReplying] = useState<UniversalMessage>();
 	const timelineRef = useRef<HTMLElement>(null);
 	const inputRef = useRef<HTMLInputElement>(null);
@@ -389,6 +413,43 @@ export function ChatRoom({ conversation, onBack }: Props) {
 		setActionMessage(undefined);
 	};
 
+	const pinMessage = () => {
+		if (!actionMessage) return;
+		void service.pinMessage(conversation, actionMessage, !actionMessage.pinned)
+			.then(() => {
+				setActionMessage(undefined);
+				void load();
+			})
+			.catch((reason) => setError(reason instanceof Error ? reason.message : 'Unable to pin message'));
+	};
+
+	const beginEdit = () => {
+		if (!actionMessage) return;
+		setEditDraft(actionMessage.text ?? '');
+		setEditing(actionMessage);
+	};
+
+	const saveEdit = () => {
+		if (!editing || !editDraft.trim()) return;
+		void service.editMessage(conversation, editing, editDraft.trim())
+			.then(() => {
+				setEditing(undefined);
+				setActionMessage(undefined);
+				void load();
+			})
+			.catch((reason) => setError(reason instanceof Error ? reason.message : 'Unable to edit message'));
+	};
+
+	const deleteMessage = () => {
+		if (!actionMessage) return;
+		void service.deleteMessage(conversation, actionMessage)
+			.then(() => {
+				setActionMessage(undefined);
+				void load();
+			})
+			.catch((reason) => setError(reason instanceof Error ? reason.message : 'Unable to delete message'));
+	};
+
 	const updateConversation = (update: { archived?: boolean; favourite?: boolean; expiration?: number }) => {
 		void service.updateConversation(conversation, update)
 			.then(() => {
@@ -413,9 +474,16 @@ export function ChatRoom({ conversation, onBack }: Props) {
 		window.requestAnimationFrame(() => focus('viewer-zoom'));
 	}, [focus, viewer?.message.id, viewer?.index]);
 
+	useEffect(() => {
+		if (!editing) return;
+		window.requestAnimationFrame(() => focus('message-edit-input'));
+	}, [editing?.id, focus]);
+
 	useSoftkeys({
 		left: actionMessage || showOptions ? undefined : selectedMessageId ? { label: 'Message', onPress: openMessageActions } : { label: 'Options', onPress: () => setShowOptions(true) },
-		center: viewer
+		center: editing
+			? { label: 'Save', onPress: saveEdit }
+			: viewer
 			? { label: 'Select', onPress: activate }
 			: actionMessage
 			? { label: 'Select', onPress: activate }
@@ -434,19 +502,33 @@ export function ChatRoom({ conversation, onBack }: Props) {
 					else inputRef.current?.focus();
 				},
 			},
-		right: { label: 'Back', onPress: viewer ? () => setViewer(undefined) : actionMessage ? closeMessageActions : showOptions ? () => setShowOptions(false) : onBack },
-	}, [actionMessage, composeControl, composerFocused, onBack, selectedMessageId, activate, showOptions, viewer]);
+		right: { label: 'Back', onPress: editing ? () => setEditing(undefined) : viewer ? () => setViewer(undefined) : actionMessage ? closeMessageActions : showOptions ? () => setShowOptions(false) : onBack },
+	}, [actionMessage, composeControl, composerFocused, onBack, selectedMessageId, activate, showOptions, viewer, editing, editDraft]);
 
 	let currentDay = '';
 	let unreadShown = false;
 	let previousMessage: UniversalMessage | undefined;
 
 	if (actionMessage) {
+		if (editing) {
+			return (
+				<main class={styles.actionScreen}>
+					<header class={styles.header}>Edit message</header>
+					<form class={styles.editForm} onSubmit={(event) => { event.preventDefault(); saveEdit(); }}>
+						<FocusInput id="message-edit-input" value={editDraft} maxlength={4000} onInput={(event) => setEditDraft(event.currentTarget.value)} />
+						<FocusButton id="message-edit-save" type="submit" class={styles.action} onClick={saveEdit}>Save edit</FocusButton>
+					</form>
+				</main>
+			);
+		}
 		return (
 			<MessageActions
 				message={actionMessage}
 				onReply={replyToMessage}
 				onReact={reactToMessage}
+				onEdit={beginEdit}
+				onDelete={deleteMessage}
+				onPin={pinMessage}
 			/>
 		);
 	}
