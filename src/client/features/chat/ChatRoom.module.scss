@@ -70,6 +70,16 @@
 	text-align: center;
 }
 
+.identityWarning {
+	margin: 2px 0 7px;
+	padding: 5px 7px;
+	background: #5f3d16;
+	border: 1px solid #9a6929;
+	border-radius: 5px;
+	color: #ffe0a6;
+	font-size: 10px;
+}
+
 .dateSeparator,
 .unreadMarker {
 	display: flex;
@@ -241,7 +251,9 @@
 }
 
 @keyframes bounce {
-	0%, 60%, 100% {
+	0%,
+	60%,
+	100% {
 		opacity: 0.45;
 		transform: translateY(0);
 	}
@@ -345,6 +357,8 @@
 }
 
 .actionList {
+	min-height: 0;
+	overflow-y: auto;
 	padding: 7px;
 }
 
@@ -364,12 +378,16 @@
 }
 
 .actionSummary {
+	display: block;
+	width: 100%;
 	margin: 0 0 7px;
 	padding: 6px;
 	background: #0c1b16;
+	border: 0;
 	border-radius: 7px;
 	color: #b8cbc3;
 	font-size: 10px;
+	text-align: left;
 }
 
 .actionSummary strong {
@@ -418,6 +436,15 @@
 	gap: 4px;
 }
 
+.expandedReactionGrid {
+	grid-template-columns: repeat(6, 1fr);
+}
+
+.expandedReactionGrid .reaction {
+	min-height: 28px;
+	font-size: 15px;
+}
+
 .moreReactions {
 	display: block;
 	width: 100%;
@@ -448,4 +475,63 @@
 	border: 1px solid #2c473e;
 	border-radius: 6px;
 	font-size: 17px;
+}
+
+.quote,
+.linkPreview,
+.poll {
+	display: grid;
+	gap: 2px;
+	margin: 3px 0;
+	padding: 4px 6px;
+	background: #10201b88;
+	border-left: 2px solid #7ba7e8;
+	border-radius: 4px;
+	font-size: 11px;
+}
+
+.linkPreview small,
+.poll small {
+	color: #b8c9c2;
+}
+
+.sticker {
+	display: block;
+	max-width: 120px;
+	max-height: 120px;
+	margin: auto;
+	object-fit: contain;
+}
+
+.voiceNote {
+	display: block;
+	margin: 3px 0;
+	padding: 6px;
+	background: #10201b88;
+	border-radius: 12px;
+}
+
+.voiceNote audio {
+	display: none;
+}
+
+.pollActions {
+	display: grid;
+	gap: 4px;
+}
+
+.messageDetails {
+	display: grid;
+	width: 100%;
+	gap: 3px;
+	margin-top: 8px;
+	padding: 7px;
+	background: #0c1b16;
+	border: 1px solid #2c473e;
+	border-radius: 6px;
+	color: #c9d8d2;
+	font-size: 10px;
+	max-height: 120px;
+	overflow-y: auto;
+	text-align: left;
 }

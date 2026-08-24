@@ -94,7 +94,9 @@
 	border-radius: 50%;
 	box-shadow: 0 1px 3px #0008;
 	color: white;
-	font: 800 8px/1 system-ui, sans-serif;
+	font:
+		800 8px/1 system-ui,
+		sans-serif;
 }
 
 .indicators {
@@ -192,8 +194,16 @@
 }
 
 @keyframes typing-bounce {
-	0%, 60%, 100% { opacity: 0.4; transform: translateY(0); }
-	30% { opacity: 1; transform: translateY(-2px); }
+	0%,
+	60%,
+	100% {
+		opacity: 0.4;
+		transform: translateY(0);
+	}
+	30% {
+		opacity: 1;
+		transform: translateY(-2px);
+	}
 }
 
 .unread {

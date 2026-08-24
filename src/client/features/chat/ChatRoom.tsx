@@ -2,12 +2,25 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { FocusButton } from '../../components/FocusButton';
 import { FocusInput } from '../../components/FocusInput';
 import { ChatOptions } from './ChatOptions';
-import { MediaViewer, MessageMedia } from './MessageMedia';
+import {
+	GroupSettings,
+	PinnedMessages,
+	PollComposer,
+	SafetyNumber,
+	VoiceRecorder,
+} from './ChatOptionScreens';
+import { MediaViewer } from './MessageMedia';
+import { attachmentLabel, MessageBubble } from './MessageBubble';
 import { readMessagePage, writeMessagePage } from '../../cache/snapshots';
 import { useFocusManager, type ArrowKey } from '../../platform/Focus';
 import { useSoftkeys } from '../../platform/Softkeys';
 import { useMessagingServices } from '../../services/ServiceContext';
-import type { MessagePage, UniversalConversation, UniversalMessage } from '../../services/contracts';
+import type {
+	MessagePage,
+	ServiceCapabilities,
+	UniversalConversation,
+	UniversalMessage,
+} from '../../services/contracts';
 import styles from './ChatRoom.module.scss';
 
 type Props = {
@@ -20,72 +33,9 @@ type Anchor = {
 	top: number;
 };
 
-function attachmentLabel(message: UniversalMessage) {
-	const attachment = message.attachments[0];
-	if (!attachment) return undefined;
-	if (attachment.kind === 'image') return '▧ Photo';
-	if (attachment.kind === 'video') return '▶ Video';
-	if (attachment.kind === 'audio') return '▶ Voice note';
-	return '▣ Attachment';
-}
-
-function Receipt({ message }: { message: UniversalMessage }) {
-	const state = message.receipt?.state;
-	if (!state) return null;
-	const mark = state === 'sent' ? '✓' : '✓✓';
-	const className = `${styles.receipt} ${state === 'read' ? styles.read : state === 'delivered' ? styles.delivered : ''}`;
-
-	return <span class={className}>{mark}</span>;
-}
-
-function MessageBubble({
-	message,
-	showTime,
-	groupStart,
-	onOpenMedia,
-	onFocus,
-	onArrow,
-}: {
-	message: UniversalMessage;
-	showTime: boolean;
-	groupStart: boolean;
-	onOpenMedia: () => void;
-	onFocus: () => void;
-	onArrow: (key: ArrowKey) => boolean;
-}) {
-	if (message.direction === 'system') {
-		return <p class={styles.system}>{message.text}</p>;
-	}
-
-	const className = `${styles.bubble} ${message.direction === 'outgoing' ? styles.outgoing : ''} ${groupStart ? styles.messageGroupStart : ''}`;
-	const attachment = attachmentLabel(message);
-	const reactions = message.reactions.map((reaction) => reaction.emoji).join(' ');
-
-	return (
-		<FocusButton
-			id={`message-${message.id}`}
-			type="button"
-			class={className}
-			onFocus={onFocus}
-			onArrow={onArrow}
-			onClick={() => undefined}
-		>
-			{attachment && <span class={styles.attachment}>{attachment}</span>}
-			{message.attachments.length > 0 && <MessageMedia message={message} onOpen={onOpenMedia} />}
-			{message.text && <span>{message.text}</span>}
-			{reactions && <span class={styles.reactions}>{reactions}</span>}
-			{showTime && (
-				<time class={styles.time}>
-					{new Date(message.sentAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-					<Receipt message={message} />
-				</time>
-			)}
-		</FocusButton>
-	);
-}
-
 function MessageActions({
 	message,
+	capabilities,
 	onReply,
 	onReact,
 	onEdit,
@@ -93,8 +43,12 @@ function MessageActions({
 	onPin,
 	expanded,
 	onToggleExpanded,
+	onVote,
+	onClosePoll,
+	favouriteReactions,
 }: {
 	message: UniversalMessage;
+	capabilities?: ServiceCapabilities;
 	onReply: () => void;
 	onReact: (emoji: string) => void;
 	onEdit: () => void;
@@ -102,43 +56,314 @@ function MessageActions({
 	onPin: () => void;
 	expanded: boolean;
 	onToggleExpanded: () => void;
+	onVote: (options: number[]) => void;
+	onClosePoll: () => void;
+	favouriteReactions: string[];
 }) {
+	const detailsRef = useRef<HTMLButtonElement>(null);
 	const reactions = expanded
-		? ['👍', '❤️', '😂', '😮', '😢', '🙏', '🔥', '🎉', '😎', '🤔', '👏', '👎', '💯', '😡', '😱', '🥳', '💔', '✅']
+		? [
+				'👍',
+				'❤️',
+				'😂',
+				'😮',
+				'😢',
+				'🙏',
+				'🔥',
+				'🎉',
+				'😎',
+				'🤔',
+				'👏',
+				'👎',
+				'💯',
+				'😡',
+				'😱',
+				'🥳',
+				'💔',
+				'✅',
+				'😀',
+				'😃',
+				'😄',
+				'😁',
+				'😆',
+				'🥹',
+				'😊',
+				'🙂',
+				'🙃',
+				'😉',
+				'😍',
+				'😘',
+				'😋',
+				'😛',
+				'🤪',
+				'🤨',
+				'🧐',
+				'🤓',
+				'🥸',
+				'🤩',
+				'🥶',
+				'🥵',
+				'🤯',
+				'😴',
+				'🤢',
+				'🤮',
+				'🤧',
+				'😇',
+				'🤠',
+				'🤑',
+				'🤗',
+				'🤭',
+				'🫣',
+				'🤫',
+				'🫡',
+				'🤐',
+				'😐',
+				'🙄',
+				'😬',
+				'😔',
+				'😭',
+				'😤',
+				'🤬',
+				'😈',
+				'👻',
+				'💩',
+				'🤡',
+				'👽',
+				'🤖',
+				'🐶',
+				'🐱',
+				'🐭',
+				'🐹',
+				'🐰',
+				'🦊',
+				'🐻',
+				'🐼',
+				'🐨',
+				'🐯',
+				'🦁',
+				'🐸',
+				'🐵',
+				'🙈',
+				'🙉',
+				'🙊',
+				'🐔',
+				'🐧',
+				'🐦',
+				'🦄',
+				'🐝',
+				'🦋',
+				'🌻',
+				'🌈',
+				'☀️',
+				'⭐',
+				'🌙',
+				'🍏',
+				'🍓',
+				'🍕',
+				'🍔',
+				'🍟',
+				'🍰',
+				'☕',
+				'🍺',
+				'🥂',
+				'⚽',
+				'🎮',
+				'🎵',
+				'🚀',
+				'🏠',
+				'☎️',
+				'💡',
+				'🎁',
+				'💬',
+				'💤',
+				'💀',
+				'💪',
+				'✌️',
+				'🤞',
+				'🫶',
+				'🤟',
+				'🤘',
+				'👌',
+				'🤌',
+				'🫵',
+				'👋',
+			]
 		: ['👍', '❤️', '😂', '😮', '😢', '🙏'];
+	const [pollChoices, setPollChoices] = useState<number[]>([]);
 
 	return (
 		<main class={styles.actionScreen}>
 			<header class={styles.header}>Message</header>
 			<section class={styles.actionList}>
-				<p class={styles.actionSummary}>
-					<strong>{message.direction === 'outgoing' ? 'You' : message.sender ?? 'Message'}</strong>
+				<FocusButton
+					id="message-action-summary"
+					type="button"
+					class={styles.actionSummary}
+					onClick={() => undefined}
+				>
+					<strong>{message.direction === 'outgoing' ? 'You' : (message.sender ?? 'Message')}</strong>
 					{message.text || attachmentLabel(message) || 'Message'}
-				</p>
-				<p class={styles.actionHeading}>Quick reaction</p>
-				<div class={styles.reactionGrid}>
-					{reactions.map((emoji) => (
-						<FocusButton
-							id={`message-reaction-${emoji}`}
-							grid="quick-reactions"
-							columns={3}
-							type="button"
-							class={styles.reaction}
-							onClick={() => onReact(emoji)}
-						>
-							{emoji}
-						</FocusButton>
-					))}
-				</div>
-				<FocusButton id="message-more-reactions" type="button" class={styles.moreReactions} onClick={onToggleExpanded}>
-					{expanded ? 'Fewer reactions' : 'More reactions…'}
 				</FocusButton>
+				{capabilities?.reactions !== false && <p class={styles.actionHeading}>Quick reaction</p>}
+				{capabilities?.reactions !== false && (
+					<div class={styles.reactionGrid}>
+						{reactions.slice(0, 6).map((emoji) => (
+							<FocusButton
+								id={`message-reaction-${emoji}`}
+								grid="quick-reactions"
+								columns={3}
+								type="button"
+								class={styles.reaction}
+								onClick={() => onReact(emoji)}
+							>
+								{emoji}
+							</FocusButton>
+						))}
+					</div>
+				)}
+				{capabilities?.reactions !== false && favouriteReactions.length > 0 && (
+					<>
+						<p class={styles.actionHeading}>Your frequent reactions</p>
+						<div class={styles.reactionGrid}>
+							{favouriteReactions.map((emoji) => (
+								<FocusButton
+									id={`message-favourite-reaction-${emoji}`}
+									grid="favourite-reactions"
+									columns={3}
+									type="button"
+									class={styles.reaction}
+									onClick={() => onReact(emoji)}
+								>
+									{emoji}
+								</FocusButton>
+							))}
+						</div>
+					</>
+				)}
+				{capabilities?.reactions !== false && (
+					<FocusButton
+						id="message-more-reactions"
+						type="button"
+						class={styles.moreReactions}
+						onClick={onToggleExpanded}
+					>
+						{expanded ? 'Fewer reactions' : 'More reactions…'}
+					</FocusButton>
+				)}
+				{capabilities?.reactions !== false && expanded && (
+					<>
+						<p class={styles.actionHeading}>All reactions</p>
+						<div class={`${styles.reactionGrid} ${styles.expandedReactionGrid}`}>
+							{reactions.slice(6).map((emoji) => (
+								<FocusButton
+									id={`message-all-reaction-${emoji}`}
+									grid="all-reactions"
+									columns={6}
+									type="button"
+									class={styles.reaction}
+									onClick={() => onReact(emoji)}
+								>
+									{emoji}
+								</FocusButton>
+							))}
+						</div>
+					</>
+				)}
 				<div class={styles.actionTiles}>
-					<FocusButton id="message-action-reply" type="button" class={styles.action} onClick={onReply}>↩ Reply</FocusButton>
-					<FocusButton id="message-action-pin" type="button" class={styles.action} onClick={onPin}>⌖ {message.pinned ? 'Unpin' : 'Pin'}</FocusButton>
-					{message.direction === 'outgoing' && <FocusButton id="message-action-edit" type="button" class={styles.action} onClick={onEdit}>✎ Edit</FocusButton>}
-					{message.direction === 'outgoing' && <FocusButton id="message-action-delete" type="button" class={styles.action} onClick={onDelete}>⌫ Delete</FocusButton>}
+					<FocusButton id="message-action-reply" type="button" class={styles.action} onClick={onReply}>
+						↩ Reply
+					</FocusButton>
+					{capabilities?.pins !== false && (
+						<FocusButton id="message-action-pin" type="button" class={styles.action} onClick={onPin}>
+							⌖ {message.pinned ? 'Unpin' : 'Pin'}
+						</FocusButton>
+					)}
+					{capabilities?.edits !== false && message.direction === 'outgoing' && (
+						<FocusButton id="message-action-edit" type="button" class={styles.action} onClick={onEdit}>
+							✎ Edit
+						</FocusButton>
+					)}
+					{capabilities?.deletes !== false && message.direction === 'outgoing' && (
+						<FocusButton id="message-action-delete" type="button" class={styles.action} onClick={onDelete}>
+							⌫ Delete
+						</FocusButton>
+					)}
 				</div>
+				{capabilities?.polls !== false && message.poll && !message.poll.closed && (
+					<>
+						<p class={styles.actionHeading}>Poll</p>
+						<div class={styles.pollActions}>
+							{message.poll.options.map((option) => (
+								<FocusButton
+									id={`poll-vote-${option.index}`}
+									type="button"
+									class={styles.action}
+									onClick={() => {
+										if (!message.poll?.multiple) return onVote([option.index]);
+										setPollChoices((current) =>
+											current.includes(option.index)
+												? current.filter((value) => value !== option.index)
+												: [...current, option.index],
+										);
+									}}
+								>
+									{message.poll?.multiple ? (pollChoices.includes(option.index) ? '● ' : '○ ') : ''}
+									{option.text}
+								</FocusButton>
+							))}
+							{message.poll.multiple && (
+								<FocusButton
+									id="poll-submit"
+									type="button"
+									class={styles.action}
+									disabled={!pollChoices.length}
+									onClick={() => onVote(pollChoices)}
+								>
+									Submit vote
+								</FocusButton>
+							)}
+							{message.direction === 'outgoing' && (
+								<FocusButton id="poll-close" type="button" class={styles.action} onClick={onClosePoll}>
+									Close poll
+								</FocusButton>
+							)}
+						</div>
+					</>
+				)}
+				{(message.reactions.length > 0 || (message.receipt?.readBy?.length ?? 0) > 0) && (
+					<FocusButton
+						id="message-details"
+						type="button"
+						class={styles.messageDetails}
+						buttonRef={detailsRef}
+						onArrow={(key) => {
+							if (key !== 'ArrowUp' && key !== 'ArrowDown') return false;
+							const element = detailsRef.current;
+							if (!element) return false;
+							const atTop = element.scrollTop <= 0;
+							const atBottom = element.scrollTop + element.clientHeight >= element.scrollHeight - 1;
+							if ((key === 'ArrowUp' && atTop) || (key === 'ArrowDown' && atBottom)) return false;
+							element.scrollBy({ top: key === 'ArrowUp' ? -80 : 80 });
+							return true;
+						}}
+						onClick={() => undefined}
+					>
+						<strong>Message details</strong>
+						{message.reactions.map((reaction) => (
+							<span>
+								{reaction.author}: {reaction.emoji}
+							</span>
+						))}
+						{message.receipt?.readBy?.map((receipt) => (
+							<span>
+								{receipt.name}: {receipt.status}
+								{receipt.at
+									? ` at ${new Date(receipt.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+									: ''}
+							</span>
+						))}
+					</FocusButton>
+				)}
 			</section>
 		</main>
 	);
@@ -148,36 +373,64 @@ export function ChatRoom({ conversation, onBack }: Props) {
 	const { serviceFor } = useMessagingServices();
 	const { activate, focus } = useFocusManager();
 	const service = serviceFor(conversation.serviceId);
+	const [currentConversation, setCurrentConversation] = useState({
+		...conversation,
+		expiration: conversation.expiration ?? 0,
+		isBlocked: conversation.isBlocked ?? false,
+		isMessageRequest: conversation.isMessageRequest ?? false,
+		isIdentityChanged: conversation.isIdentityChanged ?? false,
+		isInvited: conversation.isInvited ?? false,
+		members: conversation.members ?? [],
+		adminIds: conversation.adminIds ?? [],
+		permissions: conversation.permissions ?? {},
+	});
 	const [page, setPage] = useState<MessagePage | undefined>(() => readMessagePage(conversation.id));
+	const [capabilities, setCapabilities] = useState<ServiceCapabilities>();
 	const [draft, setDraft] = useState(() => localStorage.getItem(`draft:${conversation.id}`) ?? '');
 	const [error, setError] = useState<string>();
 	const [olderNotice, setOlderNotice] = useState<string>();
 	const [atBottom, setAtBottom] = useState(true);
 	const [selectedMessageId, setSelectedMessageId] = useState<string>();
 	const [composerFocused, setComposerFocused] = useState(false);
-	const [composeControl, setComposeControl] = useState<'clear' | 'latest'>();
+	const [composeControl, setComposeControl] = useState<'clear' | 'latest' | 'send'>();
 	const [actionMessage, setActionMessage] = useState<UniversalMessage>();
 	const [showOptions, setShowOptions] = useState(false);
+	const [optionPanel, setOptionPanel] = useState<'pins' | 'poll' | 'voice' | 'group' | 'safety'>();
+	const [safetyNumber, setSafetyNumber] = useState('Loading…');
+	const [pins, setPins] = useState<UniversalMessage[]>([]);
+	const [pinIndex, setPinIndex] = useState(0);
+	const [groupContacts, setGroupContacts] = useState<UniversalConversation[]>([]);
 	const [viewer, setViewer] = useState<{ message: UniversalMessage; index: number }>();
 	const [editing, setEditing] = useState<UniversalMessage>();
 	const [expandedReactions, setExpandedReactions] = useState(false);
+	const [reactionUsage, setReactionUsage] = useState<Record<string, number>>(() => {
+		try {
+			return JSON.parse(localStorage.getItem('reaction-usage') ?? '{}') as Record<string, number>;
+		} catch {
+			return {};
+		}
+	});
 	const [replying, setReplying] = useState<UniversalMessage>();
 	const timelineRef = useRef<HTMLElement>(null);
 	const inputRef = useRef<HTMLInputElement>(null);
 	const formRef = useRef<HTMLFormElement>(null);
 	const messageElements = useRef(new Map<string, HTMLElement>());
+	const audioElements = useRef(new Map<string, HTMLAudioElement>());
 	const initialLoad = useRef(true);
 	const followBottom = useRef(true);
 	const pendingFocus = useRef<string>();
 	const anchor = useRef<Anchor>();
 	const typingTimer = useRef<number>();
 	const reading = useRef(false);
+	const draftBeforeEdit = useRef('');
 
 	const captureAnchor = () => {
 		const timeline = timelineRef.current;
 		if (!timeline) return;
 		const top = timeline.getBoundingClientRect().top;
-		const visible = [...messageElements.current.entries()].find(([, element]) => element.getBoundingClientRect().bottom >= top);
+		const visible = [...messageElements.current.entries()].find(
+			([, element]) => element.getBoundingClientRect().bottom >= top,
+		);
 		if (visible) anchor.current = { id: visible[0], top: visible[1].getBoundingClientRect().top - top };
 	};
 
@@ -195,8 +448,9 @@ export function ChatRoom({ conversation, onBack }: Props) {
 				const seen = new Set(next.messages.map((message) => message.id));
 				const merged = {
 					...next,
-					messages: [...next.messages, ...previous.messages.filter((message) => !seen.has(message.id))]
-						.sort((first, second) => first.sentAt - second.sentAt),
+					messages: [...next.messages, ...previous.messages.filter((message) => !seen.has(message.id))].sort(
+						(first, second) => first.sentAt - second.sentAt,
+					),
 					hasMore: before ? next.hasMore : previous.hasMore || next.hasMore,
 				};
 				writeMessagePage(conversation.id, merged);
@@ -211,13 +465,21 @@ export function ChatRoom({ conversation, onBack }: Props) {
 
 	useEffect(() => {
 		void load();
-		const timer = window.setInterval(() => void load(), 2_500);
+		void service
+			.capabilities()
+			.then(setCapabilities)
+			.catch(() => undefined);
 		return () => {
-			window.clearInterval(timer);
 			if (typingTimer.current) window.clearTimeout(typingTimer.current);
 			void service.setTyping(conversation, false);
 		};
 	}, [conversation.id]);
+
+	useEffect(() => {
+		if (actionMessage || showOptions || optionPanel || viewer) return;
+		const timer = window.setInterval(() => void load(), 2_500);
+		return () => window.clearInterval(timer);
+	}, [actionMessage, conversation.id, optionPanel, showOptions, viewer]);
 
 	useEffect(() => {
 		const cached = readMessagePage(conversation.id);
@@ -230,7 +492,9 @@ export function ChatRoom({ conversation, onBack }: Props) {
 
 		if (initialLoad.current) {
 			initialLoad.current = false;
-			const unread = page.messages.find((message) => message.direction === 'incoming' && message.sentAt > page.readThrough);
+			const unread = page.messages.find(
+				(message) => message.direction === 'incoming' && message.sentAt > page.readThrough,
+			);
 			followBottom.current = !unread;
 			if (unread) {
 				pendingFocus.current = unread.id;
@@ -321,10 +585,13 @@ export function ChatRoom({ conversation, onBack }: Props) {
 		if (!text) return;
 		try {
 			setError(undefined);
+			const wasEditing = Boolean(editing);
 			if (editing) await service.editMessage(conversation, editing, text);
 			else await service.sendText(conversation, text, replying);
-			setDraft('');
-			localStorage.removeItem(`draft:${conversation.id}`);
+			const restoredDraft = wasEditing ? draftBeforeEdit.current : '';
+			setDraft(restoredDraft);
+			if (restoredDraft) localStorage.setItem(`draft:${conversation.id}`, restoredDraft);
+			else localStorage.removeItem(`draft:${conversation.id}`);
 			setReplying(undefined);
 			setEditing(undefined);
 			followBottom.current = true;
@@ -357,6 +624,7 @@ export function ChatRoom({ conversation, onBack }: Props) {
 
 	const clearDraft = () => {
 		setDraft('');
+		setEditing(undefined);
 		localStorage.removeItem(`draft:${conversation.id}`);
 		inputRef.current?.focus({ preventScroll: true });
 	};
@@ -368,7 +636,9 @@ export function ChatRoom({ conversation, onBack }: Props) {
 	};
 
 	const focusLastMessage = () => {
-		const message = [...(page?.messages ?? [])].reverse().find((candidate) => candidate.direction !== 'system');
+		const message = [...(page?.messages ?? [])]
+			.reverse()
+			.find((candidate) => candidate.direction !== 'system');
 		if (!message) return false;
 		focus(`message-${message.id}`);
 		return true;
@@ -380,9 +650,52 @@ export function ChatRoom({ conversation, onBack }: Props) {
 	};
 
 	const openMedia = (message: UniversalMessage, index = 0) => {
-		if (message.attachments.some((attachment) => attachment.kind === 'image' || attachment.kind === 'video')) {
+		if (
+			message.attachments.some((attachment) => attachment.kind === 'image' || attachment.kind === 'video')
+		) {
 			setViewer({ message, index });
 		}
+	};
+
+	const toggleVoiceNote = (message: UniversalMessage) => {
+		const audio = audioElements.current.get(message.id);
+		if (!audio) return false;
+		for (const [id, other] of audioElements.current) if (id !== message.id) other.pause();
+		if (audio.paused) void audio.play();
+		else audio.pause();
+		return true;
+	};
+
+	const openViewOnce = (message: UniversalMessage) => {
+		if (!message.viewOnce || message.viewOnce.opened) return false;
+		void service
+			.openViewOnce(message)
+			.then((path) =>
+				setViewer({
+					message: { ...message, attachments: [{ id: 'view-once', kind: 'image', path }] },
+					index: 0,
+				}),
+			)
+			.catch((reason) => setError(reason instanceof Error ? reason.message : 'View-once media unavailable'));
+		return true;
+	};
+
+	const activateMessage = (message: UniversalMessage) => {
+		if (toggleVoiceNote(message)) return;
+		if (openViewOnce(message)) return;
+		if (
+			message.attachments.some((attachment) => attachment.kind === 'image' || attachment.kind === 'video')
+		) {
+			openMedia(message);
+			return;
+		}
+		setActionMessage(message);
+	};
+
+	const closeViewer = () => {
+		const messageId = viewer?.message.id;
+		setViewer(undefined);
+		if (messageId) window.requestAnimationFrame(() => focus(`message-${messageId}`));
 	};
 
 	const closeMessageActions = () => {
@@ -401,7 +714,15 @@ export function ChatRoom({ conversation, onBack }: Props) {
 	const reactToMessage = (emoji: string) => {
 		if (!actionMessage) return;
 		const remove = actionMessage.reactions.some((reaction) => reaction.emoji === emoji && reaction.isOwn);
-		void service.react(conversation, actionMessage, emoji, remove)
+		if (!remove) {
+			setReactionUsage((current) => {
+				const next = { ...current, [emoji]: (current[emoji] ?? 0) + 1 };
+				localStorage.setItem('reaction-usage', JSON.stringify(next));
+				return next;
+			});
+		}
+		void service
+			.react(conversation, actionMessage, emoji, remove)
 			.then(() => load())
 			.catch((reason) => setError(reason instanceof Error ? reason.message : 'Unable to react'));
 		setActionMessage(undefined);
@@ -409,7 +730,8 @@ export function ChatRoom({ conversation, onBack }: Props) {
 
 	const pinMessage = () => {
 		if (!actionMessage) return;
-		void service.pinMessage(conversation, actionMessage, !actionMessage.pinned)
+		void service
+			.pinMessage(conversation, actionMessage, !actionMessage.pinned)
 			.then(() => {
 				setActionMessage(undefined);
 				void load();
@@ -419,15 +741,24 @@ export function ChatRoom({ conversation, onBack }: Props) {
 
 	const beginEdit = () => {
 		if (!actionMessage) return;
+		draftBeforeEdit.current = draft;
 		setDraft(actionMessage.text ?? '');
 		setEditing(actionMessage);
 		setActionMessage(undefined);
 	};
 
+	const cancelEdit = () => {
+		setEditing(undefined);
+		setDraft(draftBeforeEdit.current);
+		if (draftBeforeEdit.current) localStorage.setItem(`draft:${conversation.id}`, draftBeforeEdit.current);
+		else localStorage.removeItem(`draft:${conversation.id}`);
+		inputRef.current?.focus({ preventScroll: true });
+	};
 
 	const deleteMessage = () => {
 		if (!actionMessage) return;
-		void service.deleteMessage(conversation, actionMessage)
+		void service
+			.deleteMessage(conversation, actionMessage)
 			.then(() => {
 				setActionMessage(undefined);
 				void load();
@@ -435,54 +766,199 @@ export function ChatRoom({ conversation, onBack }: Props) {
 			.catch((reason) => setError(reason instanceof Error ? reason.message : 'Unable to delete message'));
 	};
 
-	const updateConversation = (update: { archived?: boolean; favourite?: boolean; expiration?: number }) => {
-		void service.updateConversation(conversation, update)
+	const votePoll = (options: number[]) => {
+		if (!actionMessage) return;
+		void service
+			.votePoll(conversation, actionMessage, options)
 			.then(() => {
+				setActionMessage(undefined);
+				void load();
+			})
+			.catch((reason) => setError(reason instanceof Error ? reason.message : 'Unable to vote'));
+	};
+
+	const closePoll = () => {
+		if (!actionMessage) return;
+		void service
+			.closePoll(conversation, actionMessage)
+			.then(() => {
+				setActionMessage(undefined);
+				void load();
+			})
+			.catch((reason) => setError(reason instanceof Error ? reason.message : 'Unable to close poll'));
+	};
+
+	const updateConversation = (update: { archived?: boolean; favourite?: boolean; expiration?: number }) => {
+		void service
+			.updateConversation(conversation, update)
+			.then(() => {
+				setCurrentConversation((current) => ({
+					...current,
+					isArchived: update.archived ?? current.isArchived,
+					isFavourite: update.favourite ?? current.isFavourite,
+					expiration: update.expiration ?? current.expiration,
+				}));
 				setShowOptions(false);
 				void load();
 			})
 			.catch((reason) => setError(reason instanceof Error ? reason.message : 'Unable to update chat'));
 	};
 
-	useEffect(() => {
-		if (!actionMessage) return;
-		window.requestAnimationFrame(() => focus('message-action-reply'));
-	}, [actionMessage?.id, focus]);
+	const openPins = () => {
+		void service
+			.listPinnedMessages(conversation)
+			.then((messages) => {
+				setPins(messages);
+				setPinIndex(0);
+				setOptionPanel('pins');
+			})
+			.catch((reason) =>
+				setError(reason instanceof Error ? reason.message : 'Unable to load pinned messages'),
+			);
+	};
+
+	const jumpToPinnedMessage = (message: UniversalMessage) => {
+		setOptionPanel(undefined);
+		setShowOptions(false);
+		pendingFocus.current = message.id;
+
+		if (page?.messages.some((candidate) => candidate.id === message.id)) {
+			window.requestAnimationFrame(() => focus(`message-${message.id}`));
+			return;
+		}
+
+		followBottom.current = false;
+		void load(message.sentAt + 1).then(() => {
+			window.requestAnimationFrame(() => focus(`message-${message.id}`));
+		});
+	};
+
+	const openSafety = () => {
+		setOptionPanel('safety');
+		setSafetyNumber('Loading…');
+		void service
+			.getSafetyNumber(conversation)
+			.then(setSafetyNumber)
+			.catch((reason) => setError(reason instanceof Error ? reason.message : 'Unable to load safety number'));
+	};
+
+	const openGroupSettings = () => {
+		void service
+			.listConversations({ archived: false })
+			.then((result) => {
+				const existing = new Set(currentConversation.members.map((member) => member.id));
+				setGroupContacts(
+					result.conversations.filter(
+						(item) =>
+							item.kind === 'direct' &&
+							!item.isNoteToSelf &&
+							!existing.has(item.remoteId.replace(/^direct:/, '')),
+					),
+				);
+				setOptionPanel('group');
+			})
+			.catch((reason) => setError(reason instanceof Error ? reason.message : 'Unable to load contacts'));
+	};
+
+	const refreshAfterOption = () => {
+		setOptionPanel(undefined);
+		setShowOptions(false);
+		followBottom.current = true;
+		void load();
+	};
 
 	useEffect(() => {
-		if (!showOptions) return;
-		window.requestAnimationFrame(() => focus('chat-option-archive'));
-	}, [focus, showOptions]);
+		if (!actionMessage) return;
+		window.requestAnimationFrame(() =>
+			focus(capabilities?.reactions === false ? 'message-action-reply' : 'message-reaction-👍'),
+		);
+	}, [actionMessage?.id, capabilities?.reactions, focus]);
+
+	useEffect(() => {
+		if (!showOptions || optionPanel) return;
+		const first = capabilities?.voiceNotes
+			? 'chat-option-voice'
+			: capabilities?.polls
+				? 'chat-option-poll'
+				: capabilities?.pins
+					? 'chat-option-pins'
+					: 'chat-option-archive';
+		window.requestAnimationFrame(() => focus(first));
+	}, [capabilities, focus, optionPanel, showOptions]);
 
 	useEffect(() => {
 		if (!viewer) return;
-		window.requestAnimationFrame(() => focus('viewer-zoom'));
+		const attachment = viewer.message.attachments.filter(
+			(item) => item.kind === 'image' || item.kind === 'video',
+		)[viewer.index];
+		window.requestAnimationFrame(() => focus(attachment?.kind === 'image' ? 'viewer-zoom' : 'viewer-back'));
 	}, [focus, viewer?.message.id, viewer?.index]);
 
-
-	useSoftkeys({
-		left: actionMessage || showOptions ? undefined : selectedMessageId ? { label: 'Message', onPress: openMessageActions } : { label: 'Options', onPress: () => setShowOptions(true) },
-		center: viewer
-			? { label: 'Select', onPress: activate }
-			: actionMessage
-			? { label: 'Select', onPress: activate }
-			: showOptions
+	useSoftkeys(
+		{
+			left:
+				actionMessage || showOptions || optionPanel
+					? undefined
+					: selectedMessageId
+						? { label: 'Message', onPress: openMessageActions }
+						: { label: 'Options', onPress: () => setShowOptions(true) },
+			center: viewer
 				? { label: 'Select', onPress: activate }
-			: {
-				label: composeControl === 'clear' ? 'Clear' : composeControl === 'latest' ? 'Latest' : composerFocused ? 'Type' : selectedMessageId ? 'Open' : 'Type',
-				onPress: () => {
-					if (composeControl) activate();
-					else if (composerFocused) inputRef.current?.focus();
-					else if (selectedMessageId) {
-						const message = page?.messages.find((candidate) => candidate.id === selectedMessageId);
-						if (message?.attachments.some((attachment) => attachment.kind === 'image' || attachment.kind === 'video')) openMedia(message);
-						else openMessageActions();
-					}
-					else inputRef.current?.focus();
-				},
+				: actionMessage
+					? { label: 'Select', onPress: activate }
+					: showOptions || optionPanel
+						? { label: 'Select', onPress: activate }
+						: {
+								label:
+									composeControl === 'clear'
+										? 'Clear'
+										: composeControl === 'latest'
+											? 'Latest'
+											: composeControl === 'send'
+												? editing
+													? 'Save'
+													: 'Send'
+												: composerFocused
+													? 'Type'
+													: selectedMessageId
+														? 'Open'
+														: 'Type',
+								onPress: () => {
+									if (composeControl) activate();
+									else if (composerFocused) inputRef.current?.focus();
+									else if (selectedMessageId) {
+										const message = page?.messages.find((candidate) => candidate.id === selectedMessageId);
+										if (message) activateMessage(message);
+									} else inputRef.current?.focus();
+								},
+							},
+			right: {
+				label: 'Back',
+				onPress: viewer
+					? closeViewer
+					: actionMessage
+						? closeMessageActions
+						: optionPanel
+							? () => setOptionPanel(undefined)
+							: showOptions
+								? () => setShowOptions(false)
+								: onBack,
 			},
-		right: { label: 'Back', onPress: viewer ? () => setViewer(undefined) : actionMessage ? closeMessageActions : showOptions ? () => setShowOptions(false) : onBack },
-	}, [actionMessage, composeControl, composerFocused, onBack, selectedMessageId, activate, showOptions, viewer]);
+		},
+		[
+			actionMessage,
+			composeControl,
+			composerFocused,
+			editing,
+			onBack,
+			page,
+			selectedMessageId,
+			activate,
+			optionPanel,
+			showOptions,
+			viewer,
+		],
+	);
 
 	let currentDay = '';
 	let unreadShown = false;
@@ -492,6 +968,7 @@ export function ChatRoom({ conversation, onBack }: Props) {
 		return (
 			<MessageActions
 				message={actionMessage}
+				capabilities={capabilities}
 				onReply={replyToMessage}
 				onReact={reactToMessage}
 				onEdit={beginEdit}
@@ -499,12 +976,21 @@ export function ChatRoom({ conversation, onBack }: Props) {
 				onPin={pinMessage}
 				expanded={expandedReactions}
 				onToggleExpanded={() => setExpandedReactions((value) => !value)}
+				onVote={votePoll}
+				onClosePoll={closePoll}
+				favouriteReactions={Object.entries(reactionUsage)
+					.filter(([emoji]) => !['👍', '❤️', '😂', '😮', '😢', '🙏'].includes(emoji))
+					.sort(([, first], [, second]) => second - first)
+					.slice(0, 6)
+					.map(([emoji]) => emoji)}
 			/>
 		);
 	}
 
 	if (viewer) {
-		const media = viewer.message.attachments.filter((attachment) => attachment.kind === 'image' || attachment.kind === 'video');
+		const media = viewer.message.attachments.filter(
+			(attachment) => attachment.kind === 'image' || attachment.kind === 'video',
+		);
 		const attachment = media[viewer.index];
 		if (attachment) {
 			return (
@@ -512,20 +998,133 @@ export function ChatRoom({ conversation, onBack }: Props) {
 					message={viewer.message}
 					attachment={attachment}
 					index={viewer.index}
-					onBack={() => setViewer(undefined)}
-					onChange={(direction) => setViewer((current) => current ? { ...current, index: (current.index + direction + media.length) % media.length } : current)}
+					onBack={closeViewer}
+					onChange={(direction) =>
+						setViewer((current) =>
+							current
+								? { ...current, index: (current.index + direction + media.length) % media.length }
+								: current,
+						)
+					}
 				/>
 			);
 		}
 	}
 
+	if (optionPanel === 'pins') {
+		return (
+			<PinnedMessages
+				pins={pins}
+				index={pinIndex}
+				onChange={(direction) =>
+					setPinIndex((current) => (pins.length ? (current + direction + pins.length) % pins.length : 0))
+				}
+				onJump={jumpToPinnedMessage}
+			/>
+		);
+	}
+
+	if (optionPanel === 'poll') {
+		return (
+			<PollComposer
+				onCreate={(question, options, multiple) => {
+					void service
+						.createPoll(conversation, question, options, multiple)
+						.then(refreshAfterOption)
+						.catch((reason) => setError(reason instanceof Error ? reason.message : 'Unable to create poll'));
+				}}
+			/>
+		);
+	}
+
+	if (optionPanel === 'voice') {
+		return (
+			<VoiceRecorder
+				onSend={async (recording) => {
+					await service.sendVoiceNote(conversation, recording);
+					refreshAfterOption();
+				}}
+			/>
+		);
+	}
+
+	if (optionPanel === 'group') {
+		return (
+			<GroupSettings
+				conversation={currentConversation}
+				contacts={groupContacts}
+				onUpdate={(changes) => {
+					void service
+						.updateGroup(conversation, changes)
+						.then(refreshAfterOption)
+						.catch((reason) => setError(reason instanceof Error ? reason.message : 'Unable to update group'));
+				}}
+				onLeave={() => {
+					void service
+						.leaveGroup(conversation)
+						.then(onBack)
+						.catch((reason) => setError(reason instanceof Error ? reason.message : 'Unable to leave group'));
+				}}
+			/>
+		);
+	}
+
+	if (optionPanel === 'safety') {
+		return (
+			<SafetyNumber
+				value={safetyNumber}
+				onTrust={(entered) => {
+					void service
+						.trustSafetyNumber(conversation, entered)
+						.then(refreshAfterOption)
+						.catch((reason) =>
+							setError(reason instanceof Error ? reason.message : 'Unable to verify safety number'),
+						);
+				}}
+			/>
+		);
+	}
+
 	if (showOptions) {
 		return (
 			<ChatOptions
-				conversation={conversation}
-				onArchive={() => updateConversation({ archived: !conversation.isArchived })}
-				onFavourite={() => updateConversation({ favourite: !conversation.isFavourite })}
+				conversation={currentConversation}
+				capabilities={capabilities}
+				onArchive={() => updateConversation({ archived: !currentConversation.isArchived })}
+				onFavourite={() => updateConversation({ favourite: !currentConversation.isFavourite })}
 				onExpiration={(expiration) => updateConversation({ expiration })}
+				onVoice={() => setOptionPanel('voice')}
+				onPoll={() => setOptionPanel('poll')}
+				onPins={openPins}
+				onGroup={openGroupSettings}
+				onBlock={() => {
+					void service
+						.setBlocked(conversation, !currentConversation.isBlocked)
+						.then(() => {
+							setCurrentConversation((current) => ({ ...current, isBlocked: !current.isBlocked }));
+							refreshAfterOption();
+						})
+						.catch((reason) =>
+							setError(reason instanceof Error ? reason.message : 'Unable to change block status'),
+						);
+				}}
+				onMessageRequest={(response) => {
+					void service
+						.respondToMessageRequest(conversation, response)
+						.then(refreshAfterOption)
+						.catch((reason) =>
+							setError(reason instanceof Error ? reason.message : 'Unable to handle request'),
+						);
+				}}
+				onSafety={openSafety}
+				onGroupInvite={(accept) => {
+					const operation = accept ? service.updateGroup(conversation, {}) : service.leaveGroup(conversation);
+					void operation
+						.then(refreshAfterOption)
+						.catch((reason) =>
+							setError(reason instanceof Error ? reason.message : 'Unable to handle group invitation'),
+						);
+				}}
 			/>
 		);
 	}
@@ -537,13 +1136,11 @@ export function ChatRoom({ conversation, onBack }: Props) {
 				<span class={styles.service}>{conversation.serviceId}</span>
 			</header>
 			<section class={styles.timeline} ref={timelineRef} onScroll={markReadAtBottom}>
+				{currentConversation.isIdentityChanged && (
+					<p class={styles.identityWarning}>Safety number changed — verify this contact in Chat options.</p>
+				)}
 				{page && (
-					<FocusButton
-						id="load-older-messages"
-						class={styles.loadOlder}
-						type="button"
-						onClick={loadOlder}
-					>
+					<FocusButton id="load-older-messages" class={styles.loadOlder} type="button" onClick={loadOlder}>
 						Load older messages
 					</FocusButton>
 				)}
@@ -554,25 +1151,36 @@ export function ChatRoom({ conversation, onBack }: Props) {
 					const day = new Date(message.sentAt).toDateString();
 					const showDate = day !== currentDay;
 					currentDay = day;
-					const showUnread = !unreadShown && message.direction === 'incoming' && message.sentAt > page.readThrough;
+					const showUnread =
+						!unreadShown && message.direction === 'incoming' && message.sentAt > page.readThrough;
 					if (showUnread) unreadShown = true;
-					const sameIncomingSender = previousMessage?.direction === 'incoming'
-						&& message.direction === 'incoming'
-						&& previousMessage.sender === message.sender;
-					const showSender = conversation.kind === 'group' && message.direction === 'incoming' && !sameIncomingSender;
+					const sameIncomingSender =
+						previousMessage?.direction === 'incoming' &&
+						message.direction === 'incoming' &&
+						previousMessage.sender === message.sender;
+					const showSender =
+						conversation.kind === 'group' && message.direction === 'incoming' && !sameIncomingSender;
 					const previousMinute = previousMessage ? Math.floor(previousMessage.sentAt / 60_000) : undefined;
 					const showTime = previousMinute !== Math.floor(message.sentAt / 60_000);
 					const groupStart = !sameIncomingSender && Boolean(previousMessage) && !showSender;
 					previousMessage = message;
 
 					return (
-						<div ref={(element) => {
-							if (element) messageElements.current.set(message.id, element);
-							else messageElements.current.delete(message.id);
-						}}>
+						<div
+							ref={(element) => {
+								if (element) messageElements.current.set(message.id, element);
+								else messageElements.current.delete(message.id);
+							}}
+						>
 							{showDate && (
 								<div class={styles.dateSeparator}>
-									<span>{new Date(message.sentAt).toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' })}</span>
+									<span>
+										{new Date(message.sentAt).toLocaleDateString([], {
+											weekday: 'short',
+											day: 'numeric',
+											month: 'short',
+										})}
+									</span>
 								</div>
 							)}
 							{showUnread && <div class={styles.unreadMarker}>Unread messages</div>}
@@ -581,12 +1189,18 @@ export function ChatRoom({ conversation, onBack }: Props) {
 								message={message}
 								showTime={showTime}
 								groupStart={groupStart}
-								onOpenMedia={() => openMedia(message)}
+								onOpenMedia={(index = 0) => openMedia(message, index)}
+								onActivate={() => activateMessage(message)}
+								onAudioReady={(audio) => {
+									if (audio) audioElements.current.set(message.id, audio);
+									else audioElements.current.delete(message.id);
+								}}
 								onFocus={() => {
 									pendingFocus.current = message.id;
 									setSelectedMessageId(message.id);
 									setComposerFocused(false);
 									setComposeControl(undefined);
+									window.requestAnimationFrame(markReadAtBottom);
 								}}
 								onArrow={(key) => {
 									if (key === 'ArrowLeft') return focusJumpToLatest();
@@ -617,11 +1231,23 @@ export function ChatRoom({ conversation, onBack }: Props) {
 				</FocusButton>
 			)}
 			<form class={styles.compose} ref={formRef} onSubmit={send}>
-				{editing && <div class={styles.replying}><span>Editing message</span><button type="button" onClick={() => { setEditing(undefined); setDraft(''); }}>×</button></div>}
+				{editing && (
+					<div class={styles.replying}>
+						<span>Editing message</span>
+						<button type="button" onClick={cancelEdit}>
+							×
+						</button>
+					</div>
+				)}
 				{replying && (
 					<div class={styles.replying}>
-						<span>Replying to {replying.direction === 'outgoing' ? 'your message' : replying.sender ?? 'message'}</span>
-						<button type="button" onClick={() => setReplying(undefined)}>×</button>
+						<span>
+							Replying to{' '}
+							{replying.direction === 'outgoing' ? 'your message' : (replying.sender ?? 'message')}
+						</span>
+						<button type="button" onClick={() => setReplying(undefined)}>
+							×
+						</button>
 					</div>
 				)}
 				{draft && (
@@ -677,7 +1303,7 @@ export function ChatRoom({ conversation, onBack }: Props) {
 					aria-label="Send"
 					onFocus={() => {
 						setComposerFocused(false);
-						setComposeControl(undefined);
+						setComposeControl('send');
 						setSelectedMessageId(undefined);
 					}}
 					onArrow={(key) => {

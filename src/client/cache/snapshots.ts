@@ -19,7 +19,8 @@ function read<T>(name: string, maxAge: number): T | undefined {
 	const cacheKey = key(name);
 	const fromMemory = memory.get(cacheKey) as Snapshot<T> | undefined;
 	const candidate = fromMemory ?? readStorage<T>(cacheKey);
-	if (!candidate || candidate.version !== CACHE_VERSION || Date.now() - candidate.savedAt > maxAge) return undefined;
+	if (!candidate || candidate.version !== CACHE_VERSION || Date.now() - candidate.savedAt > maxAge)
+		return undefined;
 
 	memory.set(cacheKey, candidate);
 	return candidate.value;
@@ -28,7 +29,7 @@ function read<T>(name: string, maxAge: number): T | undefined {
 function readStorage<T>(cacheKey: string): Snapshot<T> | undefined {
 	try {
 		const raw = localStorage.getItem(cacheKey);
-		return raw ? JSON.parse(raw) as Snapshot<T> : undefined;
+		return raw ? (JSON.parse(raw) as Snapshot<T>) : undefined;
 	} catch {
 		return undefined;
 	}

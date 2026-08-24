@@ -18,7 +18,9 @@
 	border: 0;
 	background: transparent;
 	color: tokens.$text;
-	font: 700 10px/1 system-ui, sans-serif;
+	font:
+		700 10px/1 system-ui,
+		sans-serif;
 	text-align: left;
 	text-overflow: ellipsis;
 	text-transform: uppercase;

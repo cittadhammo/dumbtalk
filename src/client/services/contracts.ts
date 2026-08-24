@@ -25,6 +25,12 @@ export type UniversalQuote = {
 	text?: string;
 };
 
+export type UniversalLinkPreview = {
+	title: string;
+	description?: string;
+	url?: string;
+};
+
 export type UniversalPoll = {
 	question: string;
 	options: { index: number; text: string; votes: string[] }[];
@@ -41,12 +47,16 @@ export type ServiceCapabilities = {
 	voiceNotes: boolean;
 	viewOnce: boolean;
 	groups: boolean;
+	identities: boolean;
+	blocking: boolean;
+	messageRequests: boolean;
+	disappearingMessages: boolean;
 };
 
 export type UniversalReceipt = {
 	state: 'sent' | 'delivered' | 'read';
 	updatedAt?: number;
-	readBy?: { name: string; at?: number }[];
+	readBy?: { name: string; status: 'delivered' | 'read' | 'viewed'; at?: number }[];
 };
 
 export type UniversalReaction = {
@@ -71,6 +81,13 @@ export type UniversalMessage = {
 	pinned?: boolean;
 	poll?: UniversalPoll;
 	viewOnce?: { opened: boolean };
+	previews?: UniversalLinkPreview[];
+	stickerPath?: string;
+};
+
+export type ConversationMember = {
+	id: string;
+	name: string;
 };
 
 export type UniversalConversation = {
@@ -86,6 +103,16 @@ export type UniversalConversation = {
 	typingNames: string[];
 	avatarPath?: string;
 	lastMessage?: UniversalMessage;
+	expiration: number;
+	isBlocked: boolean;
+	isMessageRequest: boolean;
+	isIdentityChanged: boolean;
+	isInvited: boolean;
+	description?: string;
+	members: ConversationMember[];
+	adminIds: string[];
+	inviteLink?: string;
+	permissions: Record<string, string>;
 };
 
 export type ConversationPage = {
@@ -108,11 +135,55 @@ export type MessagingService = {
 	listMessages: (conversation: UniversalConversation, options?: { before?: number }) => Promise<MessagePage>;
 	markRead: (conversation: UniversalConversation) => Promise<void>;
 	setTyping: (conversation: UniversalConversation, active: boolean) => Promise<void>;
-	sendText: (conversation: UniversalConversation, text: string, replyTo?: UniversalMessage) => Promise<UniversalMessage>;
-	react: (conversation: UniversalConversation, message: UniversalMessage, emoji: string, remove?: boolean) => Promise<void>;
-	updateConversation: (conversation: UniversalConversation, update: { archived?: boolean; favourite?: boolean; expiration?: number }) => Promise<void>;
-	editMessage: (conversation: UniversalConversation, message: UniversalMessage, text: string) => Promise<void>;
+	sendText: (
+		conversation: UniversalConversation,
+		text: string,
+		replyTo?: UniversalMessage,
+	) => Promise<UniversalMessage>;
+	react: (
+		conversation: UniversalConversation,
+		message: UniversalMessage,
+		emoji: string,
+		remove?: boolean,
+	) => Promise<void>;
+	updateConversation: (
+		conversation: UniversalConversation,
+		update: { archived?: boolean; favourite?: boolean; expiration?: number },
+	) => Promise<void>;
+	editMessage: (
+		conversation: UniversalConversation,
+		message: UniversalMessage,
+		text: string,
+	) => Promise<void>;
 	deleteMessage: (conversation: UniversalConversation, message: UniversalMessage) => Promise<void>;
-	pinMessage: (conversation: UniversalConversation, message: UniversalMessage, pinned: boolean) => Promise<void>;
+	pinMessage: (
+		conversation: UniversalConversation,
+		message: UniversalMessage,
+		pinned: boolean,
+	) => Promise<void>;
 	capabilities: () => Promise<ServiceCapabilities>;
+	listPinnedMessages: (conversation: UniversalConversation) => Promise<UniversalMessage[]>;
+	sendVoiceNote: (conversation: UniversalConversation, recording: Blob) => Promise<void>;
+	createPoll: (
+		conversation: UniversalConversation,
+		question: string,
+		options: string[],
+		multiple: boolean,
+	) => Promise<void>;
+	votePoll: (
+		conversation: UniversalConversation,
+		message: UniversalMessage,
+		options: number[],
+	) => Promise<void>;
+	closePoll: (conversation: UniversalConversation, message: UniversalMessage) => Promise<void>;
+	setBlocked: (conversation: UniversalConversation, blocked: boolean) => Promise<void>;
+	respondToMessageRequest: (
+		conversation: UniversalConversation,
+		response: 'accept' | 'delete',
+	) => Promise<void>;
+	updateGroup: (conversation: UniversalConversation, changes: Record<string, unknown>) => Promise<void>;
+	leaveGroup: (conversation: UniversalConversation) => Promise<void>;
+	openViewOnce: (message: UniversalMessage) => Promise<string>;
+	getSafetyNumber: (conversation: UniversalConversation) => Promise<string>;
+	trustSafetyNumber: (conversation: UniversalConversation, safetyNumber: string) => Promise<void>;
 };

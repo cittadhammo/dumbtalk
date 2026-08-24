@@ -1,7 +1,102 @@
 @use '../../styles/tokens';
 
-.screen { height: 100%; overflow: auto; background: tokens.$background; }
-.screen header { height: 29px; padding: 7px 9px; background: linear-gradient(135deg, #15342a, #10201b 70%); font-size: 12px; font-weight: 700; }
-.list { padding: 5px 7px 10px; }
-.heading { margin: 9px 2px 4px; color: tokens.$muted; font-size: 10px; font-weight: 800; text-transform: uppercase; }
-.action { display: block; width: 100%; min-height: 33px; margin: 3px 0; padding: 6px 8px; background: #173028; border: 1px solid #2d4c41; border-radius: 6px; color: tokens.$text; text-align: left; }
+.screen {
+	height: 100%;
+	overflow: auto;
+	background: tokens.$background;
+}
+
+.screen header {
+	height: 29px;
+	padding: 7px 9px;
+	background: linear-gradient(135deg, #15342a, #10201b 70%);
+	font-size: 12px;
+	font-weight: 700;
+}
+
+.list,
+.panel,
+.form {
+	display: grid;
+	gap: 5px;
+	padding: 5px 7px 10px;
+}
+
+.heading {
+	margin: 9px 2px 2px;
+	color: tokens.$muted;
+	font-size: 10px;
+	font-weight: 800;
+	text-transform: uppercase;
+}
+
+.action,
+.primary,
+.danger,
+.navigation button {
+	display: block;
+	width: 100%;
+	min-height: 33px;
+	padding: 6px 8px;
+	background: #173028;
+	border: 1px solid #2d4c41;
+	border-radius: 6px;
+	color: tokens.$text;
+	text-align: left;
+}
+
+.primary {
+	background: #244a7e;
+	border-color: #5279b8;
+	color: white;
+}
+
+.danger {
+	background: #6e2830;
+	border-color: #a84b55;
+	color: white;
+}
+
+.form input {
+	width: 100%;
+	min-height: 31px;
+	padding: 5px 7px;
+	background: #07100d;
+	border: 1px solid #365a4e;
+	border-radius: 5px;
+	color: tokens.$text;
+}
+
+.navigation {
+	display: grid;
+	grid-template-columns: auto 1fr auto;
+	gap: 4px;
+	margin-top: 8px;
+}
+
+.panel audio {
+	width: 100%;
+}
+
+.member {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto auto;
+	align-items: center;
+	gap: 3px;
+	padding: 4px 6px;
+	background: #14251f;
+	border-radius: 5px;
+}
+
+.member button {
+	padding: 3px;
+	background: #28473c;
+	border: 1px solid #456357;
+	border-radius: 4px;
+	color: tokens.$text;
+	font-size: 9px;
+}
+
+.error {
+	color: #ff9399;
+}

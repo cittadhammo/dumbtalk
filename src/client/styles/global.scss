@@ -19,7 +19,9 @@ body {
 	background: radial-gradient(circle at top, #17352b 0, tokens.$background 38%);
 	border-inline: 1px solid #20332d;
 	color: tokens.$text;
-	font: 14px/1.2 system-ui, sans-serif;
+	font:
+		14px/1.2 system-ui,
+		sans-serif;
 	overflow-x: hidden;
 }
 

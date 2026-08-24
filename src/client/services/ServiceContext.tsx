@@ -26,12 +26,14 @@ export function MessagingServiceProvider({ children }: { children: ComponentChil
 	}, []);
 
 	return (
-		<ServiceContext.Provider value={{
-			services,
-			statuses,
-			refreshStatuses,
-			serviceFor: serviceById,
-		}}>
+		<ServiceContext.Provider
+			value={{
+				services,
+				statuses,
+				refreshStatuses,
+				serviceFor: serviceById,
+			}}
+		>
 			{children}
 		</ServiceContext.Provider>
 	);

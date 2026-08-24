@@ -1,4 +1,4 @@
-import { api } from '../api/client';
+import { api, widgetToken } from '../api/client';
 import type {
 	ConversationPage,
 	MessagePage,
@@ -29,9 +29,25 @@ type SignalMessage = {
 	edited?: boolean;
 	deleted?: boolean;
 	pinned?: boolean;
-	poll?: { question: string; options: { index: number; text: string; votes: string[] }[]; multiple?: boolean; closed?: boolean };
+	poll?: {
+		question: string;
+		options: { index: number; text: string; votes: string[] }[];
+		multiple?: boolean;
+		closed?: boolean;
+	};
 	viewOnce?: boolean;
 	viewOnceOpened?: boolean;
+	receipts?: Record<string, { status?: string; name?: string; at?: number }>;
+	previews?: { title?: string; description?: string; url?: string }[];
+	sticker?: { packId: string; stickerId: string };
+	mentions?: {
+		start?: number;
+		length?: number;
+		name?: string;
+		profileName?: string;
+		number?: string;
+		recipient?: { name?: string; profileName?: string; number?: string };
+	}[];
 };
 
 type SignalConversation = {
@@ -46,6 +62,16 @@ type SignalConversation = {
 	typing?: string[];
 	avatar?: string | null;
 	last?: SignalMessage;
+	expiration?: number;
+	blocked?: boolean;
+	messageRequest?: boolean;
+	identityChanged?: boolean;
+	invited?: boolean;
+	description?: string;
+	members?: { id: string; name: string }[];
+	admins?: string[];
+	inviteLink?: string;
+	permissions?: Record<string, string>;
 };
 
 type SignalConversationResponse = {
@@ -67,6 +93,26 @@ function attachmentKind(contentType?: string): 'image' | 'video' | 'audio' | 'fi
 	return 'file';
 }
 
+function mentionText(value = '', mentions: SignalMessage['mentions'] = []) {
+	let text = value;
+	for (const mention of [...mentions].sort(
+		(first, second) => Number(second.start ?? 0) - Number(first.start ?? 0),
+	)) {
+		const start = Number(mention.start ?? 0);
+		const length = Number(mention.length ?? 1);
+		const name =
+			mention.name ??
+			mention.profileName ??
+			mention.recipient?.name ??
+			mention.recipient?.profileName ??
+			mention.number ??
+			mention.recipient?.number ??
+			'Someone';
+		text = `${text.slice(0, start)}@${name}${text.slice(start + length)}`;
+	}
+	return text;
+}
+
 function toUniversalMessage(message: SignalMessage): UniversalMessage {
 	return {
 		id: `signal:${message.id}`,
@@ -74,7 +120,7 @@ function toUniversalMessage(message: SignalMessage): UniversalMessage {
 		sentAt: message.timestamp,
 		direction: message.direction === 'in' ? 'incoming' : message.direction === 'out' ? 'outgoing' : 'system',
 		sender: message.sender,
-		text: message.text,
+		text: mentionText(message.text, message.mentions),
 		attachments: (message.attachments ?? []).map((attachment, index) => ({
 			id: attachment.id ?? String(index),
 			path: `/api/attachment/${encodeURIComponent(message.id)}/${index}`,
@@ -89,13 +135,33 @@ function toUniversalMessage(message: SignalMessage): UniversalMessage {
 			author: reaction.author ?? 'Someone',
 			isOwn: Boolean(reaction.own),
 		})),
-		receipt: message.direction === 'out' ? { state: message.status ?? 'sent' } : undefined,
+		receipt:
+			message.direction === 'out'
+				? {
+						state: message.status ?? 'sent',
+						readBy: Object.values(message.receipts ?? {}).map((receipt) => ({
+							name: receipt.name ?? 'Recipient',
+							status: receipt.status === 'read' || receipt.status === 'viewed' ? receipt.status : 'delivered',
+							at: receipt.at,
+						})),
+					}
+				: undefined,
 		quote: message.quote?.author ? { author: message.quote.author, text: message.quote.text } : undefined,
 		edited: message.edited,
 		deleted: message.deleted,
 		pinned: message.pinned,
-		poll: message.poll ? { ...message.poll, multiple: Boolean(message.poll.multiple), closed: Boolean(message.poll.closed) } : undefined,
+		poll: message.poll
+			? { ...message.poll, multiple: Boolean(message.poll.multiple), closed: Boolean(message.poll.closed) }
+			: undefined,
 		viewOnce: message.viewOnce ? { opened: Boolean(message.viewOnceOpened) } : undefined,
+		previews: message.previews?.map((preview) => ({
+			title: preview.title ?? preview.url ?? 'Link',
+			description: preview.description,
+			url: preview.url,
+		})),
+		stickerPath: message.sticker
+			? `/api/sticker/${encodeURIComponent(message.sticker.packId)}/${encodeURIComponent(message.sticker.stickerId)}`
+			: undefined,
 	};
 }
 
@@ -113,6 +179,16 @@ function toUniversalConversation(conversation: SignalConversation): UniversalCon
 		typingNames: conversation.typing ?? [],
 		avatarPath: conversation.avatar ?? undefined,
 		lastMessage: conversation.last ? toUniversalMessage(conversation.last) : undefined,
+		expiration: conversation.expiration ?? 0,
+		isBlocked: Boolean(conversation.blocked),
+		isMessageRequest: Boolean(conversation.messageRequest),
+		isIdentityChanged: Boolean(conversation.identityChanged),
+		isInvited: Boolean(conversation.invited),
+		description: conversation.description,
+		members: conversation.members ?? [],
+		adminIds: conversation.admins ?? [],
+		inviteLink: conversation.inviteLink,
+		permissions: conversation.permissions ?? {},
 	};
 }
 
@@ -132,7 +208,9 @@ export const signalService: MessagingService = {
 	},
 
 	async listConversations({ archived }): Promise<ConversationPage> {
-		const response = await api<SignalConversationResponse>(`/api/conversations${archived ? '?archived=1' : ''}`);
+		const response = await api<SignalConversationResponse>(
+			`/api/conversations${archived ? '?archived=1' : ''}`,
+		);
 		return {
 			conversations: response.conversations.map(toUniversalConversation),
 			archivedCount: response.archivedCount,
@@ -141,7 +219,9 @@ export const signalService: MessagingService = {
 
 	async listMessages(conversation, { before } = {}): Promise<MessagePage> {
 		const query = before ? `?before=${before}` : '';
-		const response = await api<SignalMessageResponse>(`/api/messages/${encodeURIComponent(conversation.remoteId)}${query}`);
+		const response = await api<SignalMessageResponse>(
+			`/api/messages/${encodeURIComponent(conversation.remoteId)}${query}`,
+		);
 		return {
 			messages: response.messages.map(toUniversalMessage),
 			hasMore: response.hasMore,
@@ -199,30 +279,48 @@ export const signalService: MessagingService = {
 
 	async updateConversation(conversation, update): Promise<void> {
 		if (update.archived !== undefined) {
-			await api('/api/conversation/archive', { method: 'POST', body: JSON.stringify({ conversationId: conversation.remoteId, archived: update.archived }) });
+			await api('/api/conversation/archive', {
+				method: 'POST',
+				body: JSON.stringify({ conversationId: conversation.remoteId, archived: update.archived }),
+			});
 		}
 		if (update.favourite !== undefined) {
-			await api('/api/conversation/favorite', { method: 'POST', body: JSON.stringify({ conversationId: conversation.remoteId, favorite: update.favourite }) });
+			await api('/api/conversation/favorite', {
+				method: 'POST',
+				body: JSON.stringify({ conversationId: conversation.remoteId, favorite: update.favourite }),
+			});
 		}
 		if (update.expiration !== undefined) {
 			const [, target] = conversation.remoteId.split(/:(.*)/s);
-			await api('/api/conversation/expiration', { method: 'POST', body: JSON.stringify({ kind: conversation.kind, target, expiration: update.expiration }) });
+			await api('/api/conversation/expiration', {
+				method: 'POST',
+				body: JSON.stringify({ kind: conversation.kind, target, expiration: update.expiration }),
+			});
 		}
 	},
 
 	async editMessage(conversation, message, text): Promise<void> {
 		const [, target] = conversation.remoteId.split(/:(.*)/s);
-		await api('/api/message/edit', { method: 'POST', body: JSON.stringify({ kind: conversation.kind, target, timestamp: message.sentAt, message: text }) });
+		await api('/api/message/edit', {
+			method: 'POST',
+			body: JSON.stringify({ kind: conversation.kind, target, timestamp: message.sentAt, message: text }),
+		});
 	},
 
 	async deleteMessage(conversation, message): Promise<void> {
 		const [, target] = conversation.remoteId.split(/:(.*)/s);
-		await api('/api/message/delete', { method: 'POST', body: JSON.stringify({ kind: conversation.kind, target, timestamp: message.sentAt }) });
+		await api('/api/message/delete', {
+			method: 'POST',
+			body: JSON.stringify({ kind: conversation.kind, target, timestamp: message.sentAt }),
+		});
 	},
 
 	async pinMessage(conversation, message, pinned): Promise<void> {
 		const [, target] = conversation.remoteId.split(/:(.*)/s);
-		await api('/api/message/pin', { method: 'POST', body: JSON.stringify({ kind: conversation.kind, target, timestamp: message.sentAt, pinned }) });
+		await api('/api/message/pin', {
+			method: 'POST',
+			body: JSON.stringify({ kind: conversation.kind, target, timestamp: message.sentAt, pinned }),
+		});
 	},
 
 	async capabilities(): Promise<ServiceCapabilities> {
@@ -236,6 +334,102 @@ export const signalService: MessagingService = {
 			voiceNotes: Boolean(response.capabilities?.voiceNotes),
 			viewOnce: true,
 			groups: true,
+			identities: true,
+			blocking: true,
+			messageRequests: true,
+			disappearingMessages: true,
 		};
+	},
+
+	async listPinnedMessages(conversation): Promise<UniversalMessage[]> {
+		const response = await api<{ pins: SignalMessage[] }>(
+			`/api/pins/${encodeURIComponent(conversation.remoteId)}`,
+		);
+		return response.pins.map(toUniversalMessage);
+	},
+
+	async sendVoiceNote(conversation, recording): Promise<void> {
+		const [, target] = conversation.remoteId.split(/:(.*)/s);
+		const response = await fetch(
+			`/api/voice?kind=${conversation.kind}&target=${encodeURIComponent(target)}`,
+			{
+				method: 'POST',
+				headers: { authorization: `Bearer ${widgetToken()}`, 'content-type': recording.type || 'audio/webm' },
+				body: recording,
+			},
+		);
+		if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error ?? 'Voice note failed');
+	},
+
+	async createPoll(conversation, question, options, multiple): Promise<void> {
+		const [, target] = conversation.remoteId.split(/:(.*)/s);
+		await api('/api/poll/create', {
+			method: 'POST',
+			body: JSON.stringify({ kind: conversation.kind, target, question, options, multiple }),
+		});
+	},
+
+	async votePoll(conversation, message, options): Promise<void> {
+		const [, target] = conversation.remoteId.split(/:(.*)/s);
+		await api('/api/poll/vote', {
+			method: 'POST',
+			body: JSON.stringify({ kind: conversation.kind, target, timestamp: message.sentAt, options }),
+		});
+	},
+
+	async closePoll(conversation, message): Promise<void> {
+		const [, target] = conversation.remoteId.split(/:(.*)/s);
+		await api('/api/poll/close', {
+			method: 'POST',
+			body: JSON.stringify({ kind: conversation.kind, target, timestamp: message.sentAt }),
+		});
+	},
+
+	async setBlocked(conversation, blocked): Promise<void> {
+		const [, target] = conversation.remoteId.split(/:(.*)/s);
+		await api('/api/conversation/block', {
+			method: 'POST',
+			body: JSON.stringify({ kind: conversation.kind, target, blocked }),
+		});
+	},
+
+	async respondToMessageRequest(conversation, response): Promise<void> {
+		const [, target] = conversation.remoteId.split(/:(.*)/s);
+		await api('/api/message-request', {
+			method: 'POST',
+			body: JSON.stringify({ kind: conversation.kind, target, type: response }),
+		});
+	},
+
+	async updateGroup(conversation, changes): Promise<void> {
+		const [, groupId] = conversation.remoteId.split(/:(.*)/s);
+		await api('/api/group/update', { method: 'POST', body: JSON.stringify({ groupId, ...changes }) });
+	},
+
+	async leaveGroup(conversation): Promise<void> {
+		const [, groupId] = conversation.remoteId.split(/:(.*)/s);
+		await api('/api/group/leave', { method: 'POST', body: JSON.stringify({ groupId }) });
+	},
+
+	async openViewOnce(message): Promise<string> {
+		const response = await api<{ url: string }>('/api/view-once/open', {
+			method: 'POST',
+			body: JSON.stringify({ messageId: message.id.replace(/^signal:/, '') }),
+		});
+		return response.url;
+	},
+
+	async getSafetyNumber(conversation): Promise<string> {
+		const [, target] = conversation.remoteId.split(/:(.*)/s);
+		const response = await api<{
+			identities: { safetyNumber?: string; fingerprint?: string; identityKey?: string }[];
+		}>(`/api/identity/${encodeURIComponent(target)}`);
+		const identity = response.identities[0];
+		return identity?.safetyNumber ?? identity?.fingerprint ?? identity?.identityKey ?? 'Unavailable';
+	},
+
+	async trustSafetyNumber(conversation, safetyNumber): Promise<void> {
+		const [, recipient] = conversation.remoteId.split(/:(.*)/s);
+		await api('/api/identity/trust', { method: 'POST', body: JSON.stringify({ recipient, safetyNumber }) });
 	},
 };

@@ -34,14 +34,17 @@ export function FocusProvider({ children }: { children: ComponentChildren }) {
 		item?.element.scrollIntoView({ block: 'nearest', inline: 'nearest' });
 	}, []);
 
-	const upsert = useCallback((item: Item) => {
-		items.current.set(item.id, item);
-		if (!item.initial || activeId.current) return;
+	const upsert = useCallback(
+		(item: Item) => {
+			items.current.set(item.id, item);
+			if (!item.initial || activeId.current) return;
 
-		requestAnimationFrame(() => {
-			if (!activeId.current && items.current.get(item.id)?.element === item.element) focus(item.id);
-		});
-	}, [focus]);
+			requestAnimationFrame(() => {
+				if (!activeId.current && items.current.get(item.id)?.element === item.element) focus(item.id);
+			});
+		},
+		[focus],
+	);
 
 	const remove = useCallback((id: string) => {
 		items.current.delete(id);
@@ -81,17 +84,30 @@ export function FocusProvider({ children }: { children: ComponentChildren }) {
 				const grid = all.filter((item) => item.grid === active.grid);
 				const columns = active.columns ?? grid.length;
 				const current = grid.indexOf(active);
-				const offset = arrow === 'ArrowLeft' ? -1 : arrow === 'ArrowRight' ? 1 : arrow === 'ArrowUp' ? -columns : columns;
+				const offset =
+					arrow === 'ArrowLeft' ? -1 : arrow === 'ArrowRight' ? 1 : arrow === 'ArrowUp' ? -columns : columns;
 				const targetIndex = current + offset;
-				const staysInRow = arrow === 'ArrowLeft' || arrow === 'ArrowRight'
-					? Math.floor(targetIndex / columns) === Math.floor(current / columns)
-					: targetIndex >= 0 && targetIndex < grid.length;
+				const staysInRow =
+					arrow === 'ArrowLeft' || arrow === 'ArrowRight'
+						? Math.floor(targetIndex / columns) === Math.floor(current / columns)
+						: targetIndex >= 0 && targetIndex < grid.length;
 				const target = staysInRow ? grid[targetIndex] : undefined;
 				if (target) {
 					event.preventDefault();
 					focus(target.id);
 					return;
 				}
+
+				if (arrow === 'ArrowUp' || arrow === 'ArrowDown') {
+					const edge = arrow === 'ArrowUp' ? grid[0] : grid.at(-1);
+					const outside = edge ? all[all.indexOf(edge) + (arrow === 'ArrowUp' ? -1 : 1)] : undefined;
+					event.preventDefault();
+					if (outside) focus(outside.id);
+					return;
+				}
+
+				event.preventDefault();
+				return;
 			}
 
 			if (arrow === 'ArrowUp' || arrow === 'ArrowDown') {
@@ -110,13 +126,12 @@ export function FocusProvider({ children }: { children: ComponentChildren }) {
 		};
 	}, [focus]);
 
-	const value = useMemo<ContextValue>(() => ({ upsert, remove, focus, activate }), [activate, focus, remove, upsert]);
-
-	return (
-		<FocusContext.Provider value={value}>
-			{children}
-		</FocusContext.Provider>
+	const value = useMemo<ContextValue>(
+		() => ({ upsert, remove, focus, activate }),
+		[activate, focus, remove, upsert],
 	);
+
+	return <FocusContext.Provider value={value}>{children}</FocusContext.Provider>;
 }
 
 export function useFocusable(registration: FocusRegistration): RefCallback<HTMLElement> {
@@ -127,11 +142,14 @@ export function useFocusable(registration: FocusRegistration): RefCallback<HTMLE
 	const registrationRef = useRef(registration);
 	registrationRef.current = registration;
 
-	const ref = useCallback<RefCallback<HTMLElement>>((next) => {
-		element.current = next;
-		if (next) context.upsert({ ...registrationRef.current, element: next });
-		else context.remove(registrationRef.current.id);
-	}, [context]);
+	const ref = useCallback<RefCallback<HTMLElement>>(
+		(next) => {
+			element.current = next;
+			if (next) context.upsert({ ...registrationRef.current, element: next });
+			else context.remove(registrationRef.current.id);
+		},
+		[context],
+	);
 
 	useEffect(() => {
 		if (element.current) context.upsert({ ...registration, element: element.current });

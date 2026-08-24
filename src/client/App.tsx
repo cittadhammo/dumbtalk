@@ -19,11 +19,14 @@ function FoundationScreen({ status, retry }: { status?: Status; retry: () => voi
 	const { activate, focus } = useFocusManager();
 	const [selected, setSelected] = useState('Use the D-pad to choose a foundation check.');
 
-	useSoftkeys({
-		left: { label: 'Focus', onPress: () => focus('foundation-0') },
-		center: { label: 'Select', onPress: activate },
-		right: { label: 'Exit', onPress: () => window.close() },
-	}, []);
+	useSoftkeys(
+		{
+			left: { label: 'Focus', onPress: () => focus('foundation-0') },
+			center: { label: 'Select', onPress: activate },
+			right: { label: 'Exit', onPress: () => window.close() },
+		},
+		[],
+	);
 
 	const checks = ['Soft-key actions', 'D-pad focus', 'QVGA layout'];
 
@@ -59,12 +62,7 @@ function FoundationScreen({ status, retry }: { status?: Status; retry: () => voi
 					))}
 				</div>
 				<p>{selected}</p>
-				<FocusButton
-					id="foundation-retry"
-					type="button"
-					class={styles.primary}
-					onClick={retry}
-				>
+				<FocusButton id="foundation-retry" type="button" class={styles.primary} onClick={retry}>
 					Refresh status
 				</FocusButton>
 			</section>
@@ -73,9 +71,12 @@ function FoundationScreen({ status, retry }: { status?: Status; retry: () => voi
 }
 
 function StartupScreen() {
-	useSoftkeys({
-		right: { label: 'Exit', onPress: () => window.close() },
-	}, []);
+	useSoftkeys(
+		{
+			right: { label: 'Exit', onPress: () => window.close() },
+		},
+		[],
+	);
 
 	return (
 		<main class={`${styles.screen} ${styles.centered}`}>
@@ -88,10 +89,13 @@ function StartupScreen() {
 function ErrorScreen({ message, retry }: { message: string; retry: () => void }) {
 	const { activate } = useFocusManager();
 
-	useSoftkeys({
-		center: { label: 'Retry', onPress: activate },
-		right: { label: 'Exit', onPress: () => window.close() },
-	}, []);
+	useSoftkeys(
+		{
+			center: { label: 'Retry', onPress: activate },
+			right: { label: 'Exit', onPress: () => window.close() },
+		},
+		[],
+	);
 
 	return (
 		<main class={`${styles.screen} ${styles.centered}`}>
@@ -117,7 +121,12 @@ function UnifiedApp() {
 	}
 
 	if (screen.name === 'chat') {
-		return <ChatRoom conversation={screen.conversation} onBack={() => setScreen({ name: 'conversations', archived: false })} />;
+		return (
+			<ChatRoom
+				conversation={screen.conversation}
+				onBack={() => setScreen({ name: 'conversations', archived: false })}
+			/>
+		);
 	}
 
 	return (

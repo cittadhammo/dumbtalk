@@ -31,14 +31,17 @@ export function SoftkeyProvider({ children }: { children: ComponentChildren }) {
 	const stackRef = useRef(stack);
 	stackRef.current = stack;
 
-	const push = useMemo<ContextValue['push']>(() => (config) => {
-		const id = Symbol('softkey-screen');
-		setStack((items) => [...items, { id, config }]);
+	const push = useMemo<ContextValue['push']>(
+		() => (config) => {
+			const id = Symbol('softkey-screen');
+			setStack((items) => [...items, { id, config }]);
 
-		return () => {
-			setStack((items) => items.filter((item) => item.id !== id));
-		};
-	}, []);
+			return () => {
+				setStack((items) => items.filter((item) => item.id !== id));
+			};
+		},
+		[],
+	);
 
 	const config = currentConfig(stack);
 
@@ -49,11 +52,12 @@ export function SoftkeyProvider({ children }: { children: ComponentChildren }) {
 		};
 
 		const onKeyDown = (event: KeyboardEvent) => {
-			const key: Softkey | undefined = event.code === 'ShiftLeft' || event.key === 'SoftLeft' || event.key === 'Escape'
-				? 'left'
-				: event.code === 'ShiftRight' || event.key === 'SoftRight'
-					? 'right'
-					: undefined;
+			const key: Softkey | undefined =
+				event.code === 'ShiftLeft' || event.key === 'SoftLeft' || event.key === 'Escape'
+					? 'left'
+					: event.code === 'ShiftRight' || event.key === 'SoftRight'
+						? 'right'
+						: undefined;
 
 			if (!key || event.repeat) return;
 

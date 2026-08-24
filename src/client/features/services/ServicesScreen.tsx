@@ -12,10 +12,13 @@ export function ServicesScreen({ onBack }: Props) {
 	const { statuses, refreshStatuses } = useMessagingServices();
 	const { activate } = useFocusManager();
 
-	useSoftkeys({
-		center: { label: 'Manage', onPress: activate },
-		right: { label: 'Back', onPress: onBack },
-	}, [activate, onBack]);
+	useSoftkeys(
+		{
+			center: { label: 'Manage', onPress: activate },
+			right: { label: 'Back', onPress: onBack },
+		},
+		[activate, onBack],
+	);
 
 	return (
 		<main class={styles.screen}>
