@@ -222,16 +222,23 @@ function SetupServiceScreen({
 	useEffect(() => {
 		if (step?.kind !== 'qr' && step?.kind !== 'pair-code') return;
 		let active = true;
-		void service
-			.advanceSetup(step)
-			.then((next) => {
-				if (active) setStep(next);
-			})
-			.catch((reason: unknown) => {
+		let timer: number | undefined;
+
+		const poll = async () => {
+			try {
+				const next = await service.advanceSetup(step);
+				if (!active) return;
+				setStep(next);
+				if (next === step) timer = window.setTimeout(poll, 1_000);
+			} catch (reason) {
 				if (active) setError(reason instanceof Error ? reason.message : 'Linking failed');
-			});
+			}
+		};
+
+		void poll();
 		return () => {
 			active = false;
+			if (timer) window.clearTimeout(timer);
 		};
 	}, [service, step?.kind === 'qr' || step?.kind === 'pair-code' ? step.token : undefined]);
 
