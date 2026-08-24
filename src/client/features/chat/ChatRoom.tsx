@@ -1,5 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { FocusButton } from '../../components/FocusButton';
+import { FocusInput } from '../../components/FocusInput';
+import { readMessagePage, writeMessagePage } from '../../cache/snapshots';
 import { useFocusManager, type ArrowKey } from '../../platform/Focus';
 import { useSoftkeys } from '../../platform/Softkeys';
 import { useMessagingServices } from '../../services/ServiceContext';
@@ -15,6 +17,48 @@ type Anchor = {
 	id: string;
 	top: number;
 };
+
+type OptionsProps = {
+	onBack: () => void;
+	onJumpToLatest: () => void;
+	onClearDraft: () => void;
+};
+
+function ChatOptions({ onBack, onJumpToLatest, onClearDraft }: OptionsProps) {
+	const { activate } = useFocusManager();
+
+	useSoftkeys({
+		center: { label: 'Select', onPress: activate },
+		right: { label: 'Back', onPress: onBack },
+	}, [activate, onBack]);
+
+	return (
+		<main class={styles.options}>
+			<header class={styles.header}>Chat options</header>
+			<section class={styles.optionsList}>
+				<FocusButton
+					id="chat-jump-latest"
+					type="button"
+					class={styles.option}
+					autoFocus
+					onClick={onJumpToLatest}
+				>
+					<span class={styles.optionIcon}>↓</span>
+					<span>Jump to latest message</span>
+				</FocusButton>
+				<FocusButton
+					id="chat-clear-draft"
+					type="button"
+					class={styles.option}
+					onClick={onClearDraft}
+				>
+					<span class={styles.optionIcon}>×</span>
+					<span>Clear draft</span>
+				</FocusButton>
+			</section>
+		</main>
+	);
+}
 
 function attachmentLabel(message: UniversalMessage) {
 	const attachment = message.attachments[0];
@@ -80,9 +124,11 @@ export function ChatRoom({ conversation, onBack }: Props) {
 	const { serviceFor } = useMessagingServices();
 	const { focus } = useFocusManager();
 	const service = serviceFor(conversation.serviceId);
-	const [page, setPage] = useState<MessagePage>();
+	const [page, setPage] = useState<MessagePage | undefined>(() => readMessagePage(conversation.id));
 	const [draft, setDraft] = useState(() => localStorage.getItem(`draft:${conversation.id}`) ?? '');
 	const [error, setError] = useState<string>();
+	const [olderNotice, setOlderNotice] = useState<string>();
+	const [showOptions, setShowOptions] = useState(false);
 	const timelineRef = useRef<HTMLElement>(null);
 	const inputRef = useRef<HTMLInputElement>(null);
 	const messageElements = useRef(new Map<string, HTMLElement>());
@@ -107,12 +153,17 @@ export function ChatRoom({ conversation, onBack }: Props) {
 			if (!initialLoad.current && !followBottom.current) captureAnchor();
 			const next = await service.listMessages(conversation, { before });
 			setPage((previous) => {
-				if (!previous || !before) return next;
+				if (!previous || !before) {
+					writeMessagePage(conversation.id, next);
+					return next;
+				}
 				const seen = new Set(next.messages.map((message) => message.id));
-				return {
+				const merged = {
 					...next,
 					messages: [...next.messages, ...previous.messages.filter((message) => !seen.has(message.id))],
 				};
+				writeMessagePage(conversation.id, merged);
+				return merged;
 			});
 		} catch (reason) {
 			setError(reason instanceof Error ? reason.message : 'Unable to load messages');
@@ -127,6 +178,11 @@ export function ChatRoom({ conversation, onBack }: Props) {
 			if (typingTimer.current) window.clearTimeout(typingTimer.current);
 			void service.setTyping(conversation, false);
 		};
+	}, [conversation.id]);
+
+	useEffect(() => {
+		const cached = readMessagePage(conversation.id);
+		if (cached) setPage(cached);
 	}, [conversation.id]);
 
 	useLayoutEffect(() => {
@@ -234,14 +290,49 @@ export function ChatRoom({ conversation, onBack }: Props) {
 		}
 	};
 
+	const loadOlder = () => {
+		if (!page?.hasMore) {
+			setOlderNotice('No older cached messages.');
+			return;
+		}
+
+		const first = page.messages[0];
+		if (first) void load(first.sentAt);
+	};
+
+	const jumpToLatest = () => {
+		const timeline = timelineRef.current;
+		if (timeline) timeline.scrollTop = timeline.scrollHeight;
+		followBottom.current = true;
+		setShowOptions(false);
+		inputRef.current?.focus({ preventScroll: true });
+	};
+
+	const clearDraft = () => {
+		setDraft('');
+		localStorage.removeItem(`draft:${conversation.id}`);
+		setShowOptions(false);
+		inputRef.current?.focus({ preventScroll: true });
+	};
+
 	useSoftkeys({
-		left: { label: 'Options', onPress: () => undefined },
+		left: { label: 'Options', onPress: () => setShowOptions(true) },
 		center: { label: 'Type', onPress: () => inputRef.current?.focus() },
 		right: { label: 'Back', onPress: onBack },
 	}, [onBack]);
 
 	let currentDay = '';
 	let unreadShown = false;
+
+	if (showOptions) {
+		return (
+			<ChatOptions
+				onBack={() => setShowOptions(false)}
+				onJumpToLatest={jumpToLatest}
+				onClearDraft={clearDraft}
+			/>
+		);
+	}
 
 	return (
 		<main class={styles.room}>
@@ -250,15 +341,17 @@ export function ChatRoom({ conversation, onBack }: Props) {
 				<span class={styles.service}>{conversation.serviceId}</span>
 			</header>
 			<section class={styles.timeline} ref={timelineRef} onScroll={markReadAtBottom}>
-				{page?.hasMore && (
-					<button
+				{page && (
+					<FocusButton
+						id="load-older-messages"
 						class={styles.loadOlder}
 						type="button"
-						onClick={() => page.messages[0] && void load(page.messages[0].sentAt)}
+						onClick={loadOlder}
 					>
 						Load older messages
-					</button>
+					</FocusButton>
 				)}
+				{olderNotice && <p class={styles.notice}>{olderNotice}</p>}
 				{error && <p class={styles.error}>{error}</p>}
 				{!error && !page && <p class={styles.empty}>Loading messages…</p>}
 				{page?.messages.map((message) => {
@@ -297,8 +390,9 @@ export function ChatRoom({ conversation, onBack }: Props) {
 				) : null}
 			</section>
 			<form class={styles.compose} onSubmit={send}>
-				<input
-					ref={inputRef}
+				<FocusInput
+					id="chat-compose"
+					inputRef={inputRef}
 					value={draft}
 					maxlength={4000}
 					autocomplete="off"

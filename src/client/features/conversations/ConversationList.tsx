@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'preact/hooks';
+import { readConversationPage, writeConversationPage } from '../../cache/snapshots';
 import { FocusButton } from '../../components/FocusButton';
 import { useProtectedImage } from '../../hooks/useProtectedImage';
 import { useFocusManager } from '../../platform/Focus';
@@ -88,19 +89,30 @@ function ConversationRow({ conversation, onOpen, autoFocus }: { conversation: Un
 export function ConversationList({ onOpen, onServices, onArchived, archived = false }: Props) {
 	const { services } = useMessagingServices();
 	const { activate } = useFocusManager();
-	const [conversations, setConversations] = useState<UniversalConversation[]>();
-	const [archivedCount, setArchivedCount] = useState(0);
+	const cachedPage = readConversationPage(archived);
+	const [conversations, setConversations] = useState<UniversalConversation[] | undefined>(() => cachedPage?.conversations);
+	const [archivedCount, setArchivedCount] = useState(() => cachedPage?.archivedCount ?? 0);
 	const [error, setError] = useState<string>();
+
+	useEffect(() => {
+		const cached = readConversationPage(archived);
+		setConversations(cached?.conversations);
+		setArchivedCount(cached?.archivedCount ?? 0);
+	}, [archived]);
 
 	const load = async () => {
 		try {
 			setError(undefined);
 			const pages = await Promise.all(services.map((service) => service.listConversations({ archived })));
-			setConversations(pages.flatMap((page) => page.conversations).sort((first, second) => {
+			const merged = pages.flatMap((page) => page.conversations).sort((first, second) => {
 				const favouriteDifference = Number(second.isFavourite) - Number(first.isFavourite);
 				return favouriteDifference || (second.lastMessage?.sentAt ?? 0) - (first.lastMessage?.sentAt ?? 0);
-			}));
-			setArchivedCount(pages.reduce((count, page) => count + page.archivedCount, 0));
+			});
+			const count = pages.reduce((total, page) => total + page.archivedCount, 0);
+			const page = { conversations: merged, archivedCount: count };
+			setConversations(page.conversations);
+			setArchivedCount(page.archivedCount);
+			writeConversationPage(archived, page);
 		} catch (reason) {
 			setError(reason instanceof Error ? reason.message : 'Unable to load conversations');
 		}
