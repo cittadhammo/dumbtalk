@@ -41,6 +41,14 @@ type WhatsAppMessage = {
 	deleted?: boolean;
 	forwardedFrom?: string;
 	attachments?: WhatsAppAttachment[];
+	status?: 'sent' | 'delivered' | 'read';
+	reactions?: { emoji: string; author: string; own: boolean }[];
+	poll?: {
+		question: string;
+		options: { index: number; text: string; votes: string[] }[];
+		multiple: boolean;
+		closed: boolean;
+	};
 };
 
 type WhatsAppConversation = {
@@ -76,11 +84,16 @@ function messageFromWhatsApp(message: WhatsAppMessage): UniversalMessage {
 			contentType: attachment.contentType,
 			filename: attachment.filename,
 		})),
-		reactions: [],
-		receipt: message.direction === 'out' ? { state: 'sent' } : undefined,
+		reactions: (message.reactions ?? []).map((reaction) => ({
+			emoji: reaction.emoji,
+			author: reaction.author,
+			isOwn: reaction.own,
+		})),
+		receipt: message.direction === 'out' ? { state: message.status ?? 'sent' } : undefined,
 		edited: message.edited,
 		deleted: message.deleted,
 		forwardedFrom: message.forwardedFrom,
+		poll: message.poll,
 	};
 }
 
@@ -119,13 +132,13 @@ function unsupported(feature: string): never {
 
 const capabilities: ServiceCapabilities = {
 	reactions: true,
-	edits: false,
-	deletes: false,
+	edits: true,
+	deletes: true,
 	pins: false,
-	polls: false,
+	polls: true,
 	voiceNotes: false,
 	viewOnce: false,
-	groups: false,
+	groups: true,
 	identities: false,
 	blocking: false,
 	messageRequests: false,
@@ -134,7 +147,7 @@ const capabilities: ServiceCapabilities = {
 	compose: true,
 	settings: true,
 	attachments: true,
-	forwarding: false,
+	forwarding: true,
 	stickers: false,
 	muting: true,
 };
@@ -306,8 +319,11 @@ export const whatsappService: MessagingService = {
 		};
 	},
 
-	async createGroup() {
-		unsupported('Creating groups');
+	async createGroup(name, members) {
+		await api(`${ROOT}/group/create`, {
+			method: 'POST',
+			body: JSON.stringify({ name, members }),
+		});
 	},
 
 	async getSettings() {
@@ -342,22 +358,61 @@ export const whatsappService: MessagingService = {
 		}
 	},
 
-	async forwardMessage() { unsupported('Forwarding'); },
+	async forwardMessage(message, target) {
+		await api(`${ROOT}/forward`, {
+			method: 'POST',
+			body: JSON.stringify({
+				fromTarget: message.conversationId.slice('whatsapp:'.length),
+				messageId: messageId(message),
+				target: target.remoteId,
+			}),
+		});
+	},
 	async listStickers() { return []; },
 	async sendSticker() { unsupported('Stickers'); },
-	async editMessage() { unsupported('Editing messages'); },
-	async deleteMessage() { unsupported('Deleting messages'); },
+	async editMessage(conversation, message, text) {
+		await api(`${ROOT}/edit`, {
+			method: 'POST',
+			body: JSON.stringify({ target: conversation.remoteId, messageId: messageId(message), message: text }),
+		});
+	},
+	async deleteMessage(conversation, message) {
+		await api(`${ROOT}/delete`, {
+			method: 'POST',
+			body: JSON.stringify({ target: conversation.remoteId, messageId: messageId(message) }),
+		});
+	},
 	async pinMessage() { unsupported('Pinning messages'); },
 	async capabilities() { return capabilities; },
 	async listPinnedMessages() { return []; },
 	async sendVoiceNote() { unsupported('Voice notes'); },
-	async createPoll() { unsupported('Polls'); },
-	async votePoll() { unsupported('Polls'); },
+	async createPoll(conversation, question, options, multiple) {
+		await api(`${ROOT}/poll/create`, {
+			method: 'POST',
+			body: JSON.stringify({ target: conversation.remoteId, question, options, multiple }),
+		});
+	},
+	async votePoll(conversation, message, options) {
+		await api(`${ROOT}/poll/vote`, {
+			method: 'POST',
+			body: JSON.stringify({ target: conversation.remoteId, messageId: messageId(message), options }),
+		});
+	},
 	async closePoll() { unsupported('Polls'); },
 	async setBlocked() { unsupported('Blocking contacts'); },
 	async respondToMessageRequest() { unsupported('Message requests'); },
-	async updateGroup() { unsupported('Group settings'); },
-	async leaveGroup() { unsupported('Leaving groups'); },
+	async updateGroup(conversation, changes) {
+		await api(`${ROOT}/group/update`, {
+			method: 'POST',
+			body: JSON.stringify({ target: conversation.remoteId, ...changes }),
+		});
+	},
+	async leaveGroup(conversation) {
+		await api(`${ROOT}/group/leave`, {
+			method: 'POST',
+			body: JSON.stringify({ target: conversation.remoteId }),
+		});
+	},
 	async openViewOnce() { unsupported('View-once media'); },
 	async getSafetyNumber() { unsupported('Safety numbers'); },
 	async trustSafetyNumber() { unsupported('Safety numbers'); },

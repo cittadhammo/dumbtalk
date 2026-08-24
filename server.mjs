@@ -1279,6 +1279,9 @@ async function staticFile(req, res, url) {
 const server = createServer(async (req, res) => {
   try {
     const url = new URL(req.url, "http://localhost");
+    if (url.pathname === "/internal/wacli/webhook" && req.method === "POST") {
+      return whatsapp.handleWebhook(req, res);
+    }
     if (url.pathname === "/healthz") return json(res, signalReady ? 200 : 503, { ok: signalReady });
     if (url.pathname === "/favicon.ico") {
       res.writeHead(204, { "cache-control": "public, max-age=86400" });
