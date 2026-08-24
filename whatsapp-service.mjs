@@ -162,7 +162,12 @@ export class WhatsAppService {
       process.on("exit", code => {
         if (code !== 0) return reject(new Error(errorText(stderr)));
         try {
-          resolvePromise(stdout.trim() ? JSON.parse(stdout) : {});
+          const parsed = stdout.trim() ? JSON.parse(stdout) : {};
+          if (typeof parsed?.success === "boolean") {
+            if (!parsed.success) return reject(new Error(parsed.error || "WhatsApp request failed"));
+            return resolvePromise(parsed.data ?? {});
+          }
+          resolvePromise(parsed);
         } catch {
           reject(new Error("WhatsApp returned invalid JSON"));
         }
