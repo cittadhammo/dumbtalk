@@ -1,0 +1,116 @@
+@use 'tokens';
+
+.screen {
+	min-height: 100%;
+	padding-bottom: 8px;
+}
+
+.header {
+	position: sticky;
+	top: 0;
+	z-index: 2;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	height: 38px;
+	padding: 7px 10px;
+	background: linear-gradient(135deg, #15342a, #10201b 70%);
+	border-bottom: 1px solid tokens.$line;
+	box-shadow: 0 2px 8px #0005;
+	font-weight: 700;
+}
+
+.brandTitle {
+	display: flex;
+	align-items: center;
+	gap: 7px;
+	min-width: 0;
+}
+
+.brandTitle img {
+	width: 24px;
+	height: 24px;
+	border-radius: 6px;
+}
+
+.badge {
+	padding: 2px 5px;
+	border: 1px solid #456357;
+	border-radius: 9px;
+	color: #afc7bc;
+	font-size: 9px;
+}
+
+.card {
+	margin: 12px 9px;
+	padding: 14px;
+	border: 1px solid tokens.$line;
+	border-radius: 11px;
+	background: linear-gradient(145deg, #193229, #10221c);
+	box-shadow: 0 6px 18px #0008;
+}
+
+.card h1 {
+	margin: 4px 0 8px;
+	font-size: 19px;
+}
+
+.card p {
+	color: tokens.$muted;
+}
+
+.eyebrow {
+	color: #8db6ff !important;
+	font-size: 10px;
+	font-weight: 800;
+	letter-spacing: 0.8px;
+	text-transform: uppercase;
+}
+
+.demo {
+	display: grid;
+	gap: 5px;
+	margin: 14px 0;
+}
+
+.menuButton,
+.primary {
+	display: flex;
+	width: 100%;
+	align-items: center;
+	justify-content: space-between;
+	min-height: 38px;
+	padding: 7px 9px;
+	border: 1px solid #2c473e;
+	border-radius: 7px;
+	background: linear-gradient(145deg, #1a3029, #13251f);
+	color: tokens.$text;
+	text-align: left;
+}
+
+.primary {
+	justify-content: center;
+	border-color: #5687dd;
+	background: linear-gradient(135deg, #3778e8, #285eb8);
+	font-weight: 700;
+}
+
+.centered {
+	display: grid;
+	min-height: 100%;
+	place-content: center;
+	padding: 18px;
+	text-align: center;
+}
+
+.logo {
+	width: 68px;
+	height: 68px;
+	margin: auto;
+	border-radius: 15px;
+	box-shadow: 0 4px 14px #0008;
+}
+
+.error {
+	color: #ff9399;
+}

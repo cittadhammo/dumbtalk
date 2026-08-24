@@ -1,5 +1,6 @@
 import { createContext, type ComponentChildren } from 'preact';
 import { useContext, useEffect, useMemo, useRef, useState } from 'preact/hooks';
+import styles from '../styles/Softkeys.module.scss';
 
 export type Softkey = 'left' | 'center' | 'right';
 
@@ -42,37 +43,48 @@ export function SoftkeyProvider({ children }: { children: ComponentChildren }) {
 	const config = currentConfig(stack);
 
 	useEffect(() => {
+		const invoke = (key: Softkey) => {
+			const action = currentConfig(stackRef.current)[key];
+			action?.onPress();
+		};
+
 		const onKeyDown = (event: KeyboardEvent) => {
-			const key: Softkey | undefined = event.code === 'ShiftLeft' || event.key === 'SoftLeft'
+			const key: Softkey | undefined = event.code === 'ShiftLeft' || event.key === 'SoftLeft' || event.key === 'Escape'
 				? 'left'
-				: event.code === 'ShiftRight' || event.key === 'SoftRight' || event.key === 'Escape'
+				: event.code === 'ShiftRight' || event.key === 'SoftRight'
 					? 'right'
 					: undefined;
 
 			if (!key || event.repeat) return;
 
-			const action = currentConfig(stackRef.current)[key];
-			if (!action) return;
-
 			event.preventDefault();
-			action.onPress();
+			invoke(key);
+		};
+
+		const onBack = (event: Event) => {
+			event.preventDefault();
+			invoke('right');
 		};
 
 		window.addEventListener('keydown', onKeyDown);
-		return () => window.removeEventListener('keydown', onKeyDown);
+		window.addEventListener('back', onBack);
+		return () => {
+			window.removeEventListener('keydown', onKeyDown);
+			window.removeEventListener('back', onBack);
+		};
 	}, []);
 
 	return (
 		<SoftkeyContext.Provider value={{ push }}>
 			{children}
-			<nav id="softkeys" aria-label="Soft keys">
-				<button type="button" onClick={config.left?.onPress}>
+			<nav class={styles.bar} aria-label="Soft keys">
+				<button class={styles.button} type="button" onClick={config.left?.onPress}>
 					{config.left?.label ?? ''}
 				</button>
-				<button type="button" onClick={config.center?.onPress}>
+				<button class={styles.button} type="button" onClick={config.center?.onPress}>
 					{config.center?.label ?? ''}
 				</button>
-				<button type="button" onClick={config.right?.onPress}>
+				<button class={styles.button} type="button" onClick={config.right?.onPress}>
 					{config.right?.label ?? ''}
 				</button>
 			</nav>

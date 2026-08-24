@@ -3,6 +3,7 @@ import { api, ApiError, hasWidgetToken } from './api/client';
 import { FocusButton } from './components/FocusButton';
 import { FocusProvider, useFocusManager } from './platform/Focus';
 import { SoftkeyProvider, useSoftkeys } from './platform/Softkeys';
+import styles from './styles/App.module.scss';
 
 type Status = {
 	signalReady: boolean;
@@ -11,6 +12,7 @@ type Status = {
 
 function FoundationScreen({ status, retry }: { status?: Status; retry: () => void }) {
 	const { activate, focus } = useFocusManager();
+	const [selected, setSelected] = useState('Use the D-pad to choose a foundation check.');
 
 	useSoftkeys({
 		left: { label: 'Focus', onPress: () => focus('foundation-0') },
@@ -21,39 +23,41 @@ function FoundationScreen({ status, retry }: { status?: Status; retry: () => voi
 	const checks = ['Soft-key actions', 'D-pad focus', 'QVGA layout'];
 
 	return (
-		<main class="screen foundation-screen">
-			<header>
-				<span class="brand-title">
+		<main class={styles.screen}>
+			<header class={styles.header}>
+				<span class={styles.brandTitle}>
 					<img src="/sigdumb.png" alt="" />
 					SigDumb
 				</span>
-				<span class="foundation-badge">Rebuild</span>
+				<span class={styles.badge}>Rebuild</span>
 			</header>
-			<section class="foundation-card">
-				<p class="eyebrow">Milestones 1–2</p>
+			<section class={styles.card}>
+				<p class={styles.eyebrow}>Milestones 1–2</p>
 				<h1>CloudPhone foundation</h1>
 				<p>
 					{status?.linked
 						? 'Your existing Signal link and data are intact. The rebuilt conversation screens follow next.'
 						: 'Checking the existing Signal service…'}
 				</p>
-				<div class="focus-demo" aria-label="D-pad focus demonstration">
+				<div class={styles.demo} aria-label="D-pad focus demonstration">
 					{checks.map((label, index) => (
 						<FocusButton
 							id={`foundation-${index}`}
 							grid="foundation"
 							type="button"
-							onClick={() => undefined}
+							class={styles.menuButton}
+							onClick={() => setSelected(`${label} checked.`)}
 						>
 							<span>{label}</span>
 							<span>›</span>
 						</FocusButton>
 					))}
 				</div>
+				<p>{selected}</p>
 				<FocusButton
 					id="foundation-retry"
 					type="button"
-					class="primary"
+					class={styles.primary}
 					onClick={retry}
 				>
 					Refresh status
@@ -69,8 +73,8 @@ function StartupScreen() {
 	}, []);
 
 	return (
-		<main class="screen centered">
-			<img class="brand-logo" src="/sigdumb.png" alt="" />
+		<main class={`${styles.screen} ${styles.centered}`}>
+			<img class={styles.logo} src="/sigdumb.png" alt="" />
 			<p>Starting SigDumb…</p>
 		</main>
 	);
@@ -85,9 +89,9 @@ function ErrorScreen({ message, retry }: { message: string; retry: () => void })
 	}, []);
 
 	return (
-		<main class="screen centered">
-			<img class="brand-logo" src="/sigdumb.png" alt="" />
-			<p class="error">{message}</p>
+		<main class={`${styles.screen} ${styles.centered}`}>
+			<img class={styles.logo} src="/sigdumb.png" alt="" />
+			<p class={styles.error}>{message}</p>
 			<FocusButton id="startup-retry" type="button" onClick={retry}>
 				Retry
 			</FocusButton>

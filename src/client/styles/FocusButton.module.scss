@@ -1,0 +1,8 @@
+@use 'tokens';
+
+.button:focus {
+	outline: 3px solid tokens.$focus;
+	outline-offset: -3px;
+	background: #244a7e;
+	border-color: #8bb6ff;
+}

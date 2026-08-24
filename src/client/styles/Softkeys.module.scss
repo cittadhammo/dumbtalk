@@ -1,0 +1,34 @@
+@use 'tokens';
+
+.bar {
+	position: fixed;
+	bottom: 0;
+	display: grid;
+	grid-template-columns: 1fr 1fr 1fr;
+	width: min(320px, 100%);
+	height: 24px;
+	padding: 0 6px;
+	background: linear-gradient(#0b1512, #050a08);
+	border-top: 1px solid tokens.$line;
+}
+
+.button {
+	min-width: 0;
+	overflow: hidden;
+	border: 0;
+	background: transparent;
+	color: tokens.$text;
+	font: 700 10px/1 system-ui, sans-serif;
+	text-align: left;
+	text-overflow: ellipsis;
+	text-transform: uppercase;
+	white-space: nowrap;
+}
+
+.button:nth-child(2) {
+	text-align: center;
+}
+
+.button:nth-child(3) {
+	text-align: right;
+}
