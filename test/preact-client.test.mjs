@@ -31,6 +31,8 @@ test('Preact client uses component state instead of DOM mutation', async () => {
 	assert.doesNotMatch(source, /ref=\{\(element\) => \{\s*ref\(element\)/);
 	assert.match(source, /vertical=\{false\}/);
 	assert.match(source, /grid="message-actions"/);
+	assert.match(source, /grid="chat-options"/);
+	assert.match(source, /class=\{styles\.optionIcon\}/);
 	assert.match(source, /class=\{styles\.pinnedOverlay\}/);
 	assert.match(source, /class=\{styles\.voiceComposer\}/);
 	assert.match(source, /handle\.current\?\.update\(config\)/);
