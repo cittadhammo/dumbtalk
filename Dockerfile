@@ -16,7 +16,7 @@ ARG WACLI_LINUX_AMD64_SHA256=cbd5e74d5b805550cc36c7479aca552970cc1b314c5c08e0236
 ARG WACLI_LINUX_ARM64_SHA256=8e5d21f8d5f097e5d3a883cdb42848a9e50a7383e4de049c807cc44e6e7c81b6
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates curl ffmpeg gosu sqlite3 \
+    && apt-get install -y --no-install-recommends ca-certificates curl gosu sqlite3 \
     && curl -fsSL "https://github.com/AsamK/signal-cli/releases/download/v${SIGNAL_CLI_VERSION}/signal-cli-${SIGNAL_CLI_VERSION}-Linux-native.tar.gz" -o /tmp/signal-cli.tar.gz \
     && echo "${SIGNAL_CLI_SHA256}  /tmp/signal-cli.tar.gz" | sha256sum -c - \
     && tar -xzf /tmp/signal-cli.tar.gz -C /usr/local/bin \
