@@ -651,6 +651,15 @@ export function ChatRoom({ conversation, initialMessage, onBack }: Props) {
 		return false;
 	};
 
+	const revealMessageStart = (messageId: string) => {
+		const timeline = timelineRef.current;
+		const element = messageElements.current.get(messageId);
+		if (!timeline || !element) return;
+		const top = element.getBoundingClientRect().top;
+		const viewportTop = timeline.getBoundingClientRect().top;
+		if (top < viewportTop) timeline.scrollBy({ top: top - viewportTop });
+	};
+
 	const markReadAtBottom = () => {
 		const timeline = timelineRef.current;
 		if (!timeline || reading.current) return;
@@ -1480,6 +1489,7 @@ export function ChatRoom({ conversation, initialMessage, onBack }: Props) {
 								}}
 								onFocus={() => {
 									pendingFocus.current = message.id;
+									revealMessageStart(message.id);
 									setSelectedMessageId(message.id);
 									setComposerFocused(false);
 									setComposeControl(undefined);
@@ -1639,11 +1649,11 @@ export function ChatRoom({ conversation, initialMessage, onBack }: Props) {
 						<AppIcon name="sticker" />
 					</FocusButton>
 				)}
-				{draft && (
-					<FocusButton
+				<FocusButton
 						id="chat-clear-draft"
-						class={styles.utility}
+						class={`${styles.utility} ${styles.clearDraft} ${draft ? styles.clearDraftVisible : ''}`}
 						type="button"
+						disabled={!draft}
 						onArrow={(key) => {
 							if (key === 'ArrowLeft') focus(controlBeforeClear());
 							if (key === 'ArrowRight') focus('chat-compose');
@@ -1659,7 +1669,6 @@ export function ChatRoom({ conversation, initialMessage, onBack }: Props) {
 					>
 						×
 					</FocusButton>
-				)}
 				<FocusInput
 					id="chat-compose"
 					inputRef={inputRef}

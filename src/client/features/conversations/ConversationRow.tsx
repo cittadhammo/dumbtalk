@@ -1,4 +1,5 @@
 import { AppIcon } from '../../components/AppIcon';
+import { ServiceIcon } from '../../components/ServiceIcon';
 import { FocusButton } from '../../components/FocusButton';
 import { useProtectedImage } from '../../hooks/useProtectedImage';
 import type { UniversalConversation, UniversalMessage } from '../../services/contracts';
@@ -82,6 +83,7 @@ function Avatar({ conversation }: { conversation: UniversalConversation }) {
 		<span class={className} aria-hidden="true">
 			{conversation.isNoteToSelf ? '🔖' : initials(conversation.title)}
 			{source && <img src={source} alt="" />}
+			{conversation.unreadCount > 0 && <span class={styles.unread}>{conversation.unreadCount}</span>}
 		</span>
 	);
 }
@@ -122,19 +124,9 @@ export function ConversationRow({
 								<AppIcon name="mute" />
 							</span>
 						)}
-						<span
-							class={styles.serviceIcon}
-							aria-label={`${conversation.serviceId} conversation`}
-						>
-							{conversation.serviceId === 'signal'
-								? 'S'
-								: conversation.serviceId === 'telegram'
-									? 'T'
-									: 'W'}
+						<span class={styles.serviceIcon} aria-label={`${conversation.serviceId} conversation`}>
+							<ServiceIcon service={conversation.serviceId} />
 						</span>
-						{conversation.unreadCount > 0 && (
-							<span class={styles.unread}>{conversation.unreadCount}</span>
-						)}
 					</span>
 				</span>
 				<span class={styles.preview}>

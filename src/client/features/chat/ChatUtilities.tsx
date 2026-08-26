@@ -26,6 +26,7 @@ export function AttachmentComposer({
 	onSend: (file: File, caption: string) => Promise<void>;
 }) {
 	const input = useRef<HTMLInputElement>(null);
+	const cameraInput = useRef<HTMLInputElement>(null);
 	const [file, setFile] = useState<File>();
 	const { focus } = useFocusManager();
 	const [busy, setBusy] = useState(false);
@@ -66,6 +67,14 @@ export function AttachmentComposer({
 				}
 				onChange={(event) => setFile(event.currentTarget.files?.[0])}
 			/>
+			<input
+				ref={cameraInput}
+				class={styles.hiddenInput}
+				type="file"
+				accept="image/*"
+				capture="environment"
+				onChange={(event) => setFile(event.currentTarget.files?.[0])}
+			/>
 			<div class={styles.composerTitle}>
 				<span class={styles.composerIcon}><AppIcon name="attach" /></span>
 				<span><strong>Send attachment</strong><small>{file ? file.name : 'Choose a saved item'}</small></span>
@@ -80,15 +89,18 @@ export function AttachmentComposer({
 					{file ? 'Choose another' : support.files ? 'Choose saved file' : 'Choose saved media'}
 				</FocusButton>
 			)}
+			{support.images && (
+				<FocusButton id="attachment-camera" onClick={() => cameraInput.current?.click()}>
+					<AppIcon name="compose" /> Take photo
+				</FocusButton>
+			)}
 			{file && (
 				<span class={styles.fileInfo}>
 					{Math.ceil(file.size / 1024)} KB
 					{caption ? ' · message used as caption' : ''}
 				</span>
 			)}
-			{cloudPhone && (support.images || support.videos || support.files) && !file && (
-				<span class={styles.fileInfo}>Saved items only; live camera capture is unavailable here.</span>
-			)}
+			{cloudPhone && support.images && !file && <span class={styles.fileInfo}>Choose a saved item or take a photo.</span>}
 			{error && <span class={styles.error}>{error}</span>}
 			<div class={styles.composerActions}>
 				<FocusButton id="attachment-cancel" onClick={onClose}>Cancel</FocusButton>
@@ -126,7 +138,7 @@ export function StickerPicker({
 	onChoose: (sticker: UniversalSticker) => void;
 }) {
 	const [stickers, setStickers] = useState<UniversalSticker[]>([]);
-	const [visible, setVisible] = useState(24);
+	const [packId, setPackId] = useState<string>();
 	const [error, setError] = useState<string>();
 
 	useEffect(() => {
@@ -138,13 +150,38 @@ export function StickerPicker({
 			);
 	}, [service]);
 
+	const packs = stickers.reduce<{ id: string; title: string; stickers: UniversalSticker[] }[]>((all, sticker) => {
+		let pack = all.find((item) => item.id === sticker.packId);
+		if (!pack) {
+			pack = { id: sticker.packId, title: sticker.packTitle || 'Sticker pack', stickers: [] };
+			all.push(pack);
+		}
+		pack.stickers.push(sticker);
+		return all;
+	}, []);
+	const activePack = packs.find((pack) => pack.id === packId) ?? packs[0];
+
 	return (
 		<main class={styles.overlayScreen}>
 			<header><AppIcon name="sticker" /> Stickers</header>
+			{packs.length > 1 && (
+				<nav class={styles.packTabs} aria-label="Sticker packs">
+					{packs.map((pack, index) => (
+						<FocusButton
+							id={`sticker-pack-${pack.id}`}
+							class={activePack?.id === pack.id ? styles.activePack : undefined}
+							autoFocus={index === 0}
+							onClick={() => setPackId(pack.id)}
+						>
+							{pack.title}
+						</FocusButton>
+					))}
+				</nav>
+			)}
 			<section class={styles.stickerGrid}>
 				{error && <p class={styles.error}>{error}</p>}
 				{!error && !stickers.length && <p>No known Signal sticker packs are installed.</p>}
-				{stickers.slice(0, visible).map((sticker, index) => (
+				{activePack?.stickers.map((sticker, index) => (
 					<FocusButton
 						id={`sticker-${sticker.id}`}
 						grid="stickers"
@@ -156,15 +193,6 @@ export function StickerPicker({
 						<StickerImage sticker={sticker} />
 					</FocusButton>
 				))}
-				{visible < stickers.length && (
-					<FocusButton
-						id="stickers-more"
-						class={styles.moreStickers}
-						onClick={() => setVisible((current) => current + 24)}
-					>
-						More
-					</FocusButton>
-				)}
 			</section>
 		</main>
 	);

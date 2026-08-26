@@ -89,18 +89,29 @@
 
 .serviceChooser {
 	display: grid;
-	grid-template-columns: repeat(2, minmax(0, 1fr));
+	grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
 	gap: 4px;
 	margin-bottom: 6px;
 }
 
 .serviceChooser button {
+	display: flex;
+	min-width: 0;
 	min-height: 27px;
+	align-items: center;
+	justify-content: center;
+	gap: 4px;
 	border: 1px solid #345449;
 	border-radius: 7px;
 	background: #142720;
 	color: #c5d7cf;
 	font-size: 10px;
+}
+
+.serviceChooser button svg {
+	width: 13px;
+	height: 13px;
+	flex: 0 0 auto;
 }
 
 .serviceChooser .selectedService {

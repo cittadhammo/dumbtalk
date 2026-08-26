@@ -117,9 +117,7 @@
 	border-radius: 50%;
 	box-shadow: 0 1px 3px #0008;
 	color: white;
-	font:
-		800 8px/1 system-ui,
-		sans-serif;
+	font-size: 9px;
 }
 
 .indicators {
@@ -239,9 +237,14 @@
 }
 
 .unread {
+	position: absolute;
+	right: -5px;
+	bottom: -4px;
+	z-index: 1;
 	min-width: 18px;
 	padding: 1px 5px;
-	background: tokens.$blue;
+	background: #d8454f;
+	border: 1px solid #10201b;
 	border-radius: 10px;
 	font-size: 11px;
 	text-align: center;

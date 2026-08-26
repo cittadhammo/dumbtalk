@@ -3,6 +3,7 @@ import { useEffect, useState } from 'preact/hooks';
 import { FocusButton } from '../../components/FocusButton';
 import { FocusInput } from '../../components/FocusInput';
 import { AppIcon } from '../../components/AppIcon';
+import { ServiceIcon } from '../../components/ServiceIcon';
 import { useFocusManager } from '../../platform/Focus';
 import { useSoftkeys } from '../../platform/Softkeys';
 import { useMessagingServices } from '../../services/ServiceContext';
@@ -34,6 +35,7 @@ function ServiceChooser({
 					class={selected === service.id ? styles.selectedService : undefined}
 					onClick={() => onSelect(service)}
 				>
+					<ServiceIcon service={service.id} />
 					{service.label}
 				</FocusButton>
 			))}
@@ -131,7 +133,7 @@ export function MainMenu({
 							onClick={() => update({ favourite: !selected.isFavourite })}
 						>
 							<span class={styles.tileIcon}><AppIcon name="star" /></span>
-							<span class={styles.tileLabel}>{selected.isFavourite ? 'Unfavourite' : 'Favourite'}</span>
+							<span class={styles.tileLabel}>{selected.isFavourite ? 'Unstar' : 'Star'}</span>
 						</FocusButton>
 						<FocusButton
 							id="menu-mute"

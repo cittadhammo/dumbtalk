@@ -6,6 +6,7 @@ import type { MessagingService, ServiceId, ServiceStatus } from './contracts';
 type ContextValue = {
 	services: MessagingService[];
 	statuses: ServiceStatus[];
+	ready: boolean;
 	refreshStatuses: () => Promise<void>;
 	serviceFor: (id: ServiceId) => MessagingService;
 };
@@ -15,6 +16,7 @@ const ServiceContext = createContext<ContextValue | null>(null);
 export function MessagingServiceProvider({ children }: { children: ComponentChildren }) {
 	const availableServices = useMemo(() => installedServices(), []);
 	const [statuses, setStatuses] = useState<ServiceStatus[]>([]);
+	const [ready, setReady] = useState(false);
 	const services = useMemo(
 		() =>
 			availableServices.filter((service) =>
@@ -39,6 +41,7 @@ export function MessagingServiceProvider({ children }: { children: ComponentChil
 			}),
 		);
 		setStatuses(next);
+		setReady(true);
 	};
 
 	useEffect(() => {
@@ -50,6 +53,7 @@ export function MessagingServiceProvider({ children }: { children: ComponentChil
 			value={{
 				services,
 				statuses,
+				ready,
 				refreshStatuses,
 				serviceFor: serviceById,
 			}}

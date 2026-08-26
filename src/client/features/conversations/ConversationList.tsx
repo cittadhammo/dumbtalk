@@ -17,7 +17,7 @@ type Props = {
 };
 
 export function ConversationList({ onOpen, onMenu, onArchived, archived = false }: Props) {
-	const { services } = useMessagingServices();
+	const { services, ready } = useMessagingServices();
 	const { activate } = useFocusManager();
 	const cachedPage = readConversationPage(archived);
 	const [conversations, setConversations] = useState<UniversalConversation[] | undefined>(
@@ -50,10 +50,11 @@ export function ConversationList({ onOpen, onMenu, onArchived, archived = false 
 	};
 
 	useEffect(() => {
+		if (!ready) return;
 		void load();
 		const timer = window.setInterval(() => void load(), 3_000);
 		return () => window.clearInterval(timer);
-	}, [archived, services]);
+	}, [archived, ready, services]);
 
 	useSoftkeys(
 		{
@@ -79,8 +80,8 @@ export function ConversationList({ onOpen, onMenu, onArchived, archived = false 
 			</header>
 			<section class={styles.list}>
 				{error && <p class={styles.error}>{error}</p>}
-				{!error && !conversations && <p class={styles.empty}>Loading conversations…</p>}
-				{!error && conversations?.length === 0 && (
+				{!error && (!ready || !conversations) && <p class={styles.empty}>Loading conversations…</p>}
+				{!error && ready && conversations?.length === 0 && (
 					<p class={styles.empty}>{archived ? 'No archived conversations' : 'No conversations yet'}</p>
 				)}
 				{conversations?.map((conversation, index) => (

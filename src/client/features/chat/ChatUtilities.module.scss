@@ -84,14 +84,44 @@
 .hiddenInput { display: none; }
 
 .overlayScreen {
-	display: grid;
+	display: flex;
 	height: 100%;
-	grid-template-rows: 29px minmax(0, 1fr);
+	flex-direction: column;
 	overflow: hidden;
 	background: tokens.$background;
 }
 
+.packTabs {
+	display: flex;
+	gap: 4px;
+	padding: 5px 6px;
+	overflow-x: auto;
+	background: #10201b;
+	border-bottom: 1px solid #294238;
+}
+
+.packTabs button {
+	min-width: 54px;
+	min-height: 25px;
+	padding: 3px 6px;
+	overflow: hidden;
+	background: #1a342a;
+	border: 1px solid #36594d;
+	border-radius: 12px;
+	color: tokens.$muted;
+	font-size: 9px;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.packTabs .activePack {
+	background: #285eb8;
+	border-color: #82b2ff;
+	color: #fff;
+}
+
 .overlayScreen > header {
+	flex: 0 0 29px;
 	display: flex;
 	align-items: center;
 	gap: 6px;
@@ -111,6 +141,7 @@
 	align-content: start;
 	padding: 6px;
 	overflow-y: auto;
+	flex: 1 1 auto;
 }
 
 .stickerGrid button {

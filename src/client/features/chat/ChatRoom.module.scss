@@ -357,6 +357,21 @@
 	margin: auto;
 }
 
+.compose .clearDraft {
+	margin-left: -30px;
+	opacity: 0;
+	transform: scale(0.75);
+	transition: margin 150ms ease, opacity 150ms ease, transform 150ms ease;
+	pointer-events: none;
+}
+
+.compose .clearDraftVisible {
+	margin-left: 0;
+	opacity: 1;
+	transform: scale(1);
+	pointer-events: auto;
+}
+
 .empty,
 .error {
 	padding: 24px 12px;

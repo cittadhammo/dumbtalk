@@ -23,6 +23,17 @@ type Status = {
 	anyLinked?: boolean;
 };
 
+const STATUS_CACHE_KEY = 'dumbtalk:boot-status';
+
+function cachedStatus(): Status | undefined {
+	try {
+		const cached = JSON.parse(localStorage.getItem(STATUS_CACHE_KEY) ?? '') as { savedAt?: number; status?: Status };
+		return cached.savedAt && Date.now() - cached.savedAt < 24 * 60 * 60_000 ? cached.status : undefined;
+	} catch {
+		return undefined;
+	}
+}
+
 function StartupScreen() {
 	useSoftkeys(
 		{
@@ -154,7 +165,7 @@ function UnifiedApp() {
 }
 
 function Boot() {
-	const [status, setStatus] = useState<Status>();
+	const [status, setStatus] = useState<Status | undefined>(cachedStatus);
 	const [error, setError] = useState<string>();
 
 	const load = useCallback(() => {
@@ -165,7 +176,12 @@ function Boot() {
 
 		setError(undefined);
 		void api<Status>('/api/status')
-			.then(setStatus)
+			.then((next) => {
+				setStatus(next);
+				try {
+					localStorage.setItem(STATUS_CACHE_KEY, JSON.stringify({ savedAt: Date.now(), status: next }));
+				} catch {}
+			})
 			.catch((reason: unknown) => {
 				const failure = reason as ApiError;
 				setError(failure.status === 404 ? 'This widget is not configured.' : failure.message);

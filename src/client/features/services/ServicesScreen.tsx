@@ -2,6 +2,7 @@ import type { ComponentChildren } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
 import { FocusButton } from '../../components/FocusButton';
 import { FocusInput } from '../../components/FocusInput';
+import { ServiceIcon } from '../../components/ServiceIcon';
 import { useFocusManager } from '../../platform/Focus';
 import { useSoftkeys } from '../../platform/Softkeys';
 import { useMessagingServices } from '../../services/ServiceContext';
@@ -29,18 +30,6 @@ type View =
 
 function ScreenHeader({ children }: { children: ComponentChildren }) {
 	return <header class={styles.header}>{children}</header>;
-}
-
-function serviceMark(id: ServiceId) {
-	return id === 'signal' ? 'S' : id === 'telegram' ? 'T' : 'W';
-}
-
-function serviceColour(id: ServiceId) {
-	return id === 'signal'
-		? styles.signalIcon
-		: id === 'telegram'
-			? styles.telegramIcon
-			: styles.whatsappIcon;
 }
 
 function WelcomeScreen({ onContinue }: { onContinue: () => void }) {
@@ -113,10 +102,8 @@ function ServiceList({
 						autoFocus={index === 0}
 						onClick={() => onManage(status.id)}
 					>
-						<span
-							class={`${styles.serviceIcon} ${serviceColour(status.id)}`}
-						>
-							{serviceMark(status.id)}
+						<span class={`${styles.serviceIcon} ${styles[`${status.id}Icon`]}`}>
+							<ServiceIcon service={status.id} />
 						</span>
 						<span class={styles.body}>
 							<strong>{status.label}</strong>
@@ -160,10 +147,8 @@ function ManageServiceScreen({
 		<main class={styles.screen}>
 			<ScreenHeader>{service.label}</ScreenHeader>
 			<section class={styles.detail}>
-				<span
-					class={`${styles.largeIcon} ${serviceColour(service.id)}`}
-				>
-					{serviceMark(service.id)}
+				<span class={`${styles.largeIcon} ${styles[`${service.id}Icon`]}`}>
+					<ServiceIcon service={service.id} />
 				</span>
 				<h1>{service.label}</h1>
 				<p class={status?.connected ? styles.goodStatus : styles.quietStatus}>
