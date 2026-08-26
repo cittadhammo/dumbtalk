@@ -16,6 +16,7 @@ type Props = {
 	onMessageRequest: (response: 'accept' | 'delete') => void;
 	onSafety: () => void;
 	onGroupInvite: (accept: boolean) => void;
+	onLocalNames: () => void;
 	capabilities?: ServiceCapabilities;
 };
 
@@ -67,6 +68,7 @@ export function ChatOptions({
 	onMessageRequest,
 	onSafety,
 	onGroupInvite,
+	onLocalNames,
 	capabilities,
 }: Props) {
 	const [showExpiration, setShowExpiration] = useState(false);
@@ -99,6 +101,11 @@ export function ChatOptions({
 				</div>
 				<p class={styles.heading}>Conversation</p>
 				<div class={styles.optionGrid}>
+					{!conversation.isNoteToSelf && (
+						<OptionButton id="chat-option-local-names" icon="edit" onClick={onLocalNames}>
+							Local names
+						</OptionButton>
+					)}
 					{conversation.isInvited && (
 						<OptionButton id="chat-option-accept-invite" icon="group" onClick={() => onGroupInvite(true)}>
 							Accept invitation

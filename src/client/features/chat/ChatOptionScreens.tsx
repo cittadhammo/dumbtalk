@@ -116,6 +116,46 @@ export function PollComposer({
 	);
 }
 
+export function LocalNicknameEditor({
+	people,
+	nicknames,
+	onSave,
+}: {
+	people: string[];
+	nicknames: Record<string, string>;
+	onSave: (nicknames: Record<string, string>) => void;
+}) {
+	const [drafts, setDrafts] = useState(nicknames);
+
+	return (
+		<main class={styles.screen}>
+			<header>Local names</header>
+			<section class={styles.form}>
+				<p class={styles.formIntro}>These names are only stored by DumbTalk for this chat. They are never sent to the messaging service.</p>
+				{people.map((person, index) => (
+					<label class={styles.fieldLabel} key={person}>
+						<span>{person}</span>
+						<FocusInput
+							id={`local-nickname-${index}`}
+							autoFocus={index === 0}
+							value={drafts[person] ?? ''}
+							placeholder="Use original name"
+							maxlength={40}
+							onInput={(event) =>
+								setDrafts((current) => ({ ...current, [person]: event.currentTarget.value }))
+							}
+						/>
+					</label>
+				))}
+				{!people.length && <p>No recipients are available in this chat yet.</p>}
+				<FocusButton id="local-nickname-save" class={styles.primary} onClick={() => onSave(drafts)}>
+					Save local names
+				</FocusButton>
+			</section>
+		</main>
+	);
+}
+
 export function VoiceComposer({
 	onSend,
 	onClose,

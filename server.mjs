@@ -20,7 +20,7 @@ const EVENTS_URL = "http://127.0.0.1:7583/api/v1/events";
 const MAX_MESSAGES = 3000;
 const invalidTokenAttempts = new Map();
 let messages = [];
-let appState = { archived: [], favorites: [], muted: [], readThrough: {}, expirations: {}, mindfulUsage: {}, settings: { sendReadReceipts: true, sendTypingIndicators: true, linkPreviews: true, defaultExpiration: 0 } };
+let appState = { archived: [], favorites: [], muted: [], readThrough: {}, expirations: {}, localNicknames: {}, mindfulUsage: {}, settings: { sendReadReceipts: true, sendTypingIndicators: true, linkPreviews: true, defaultExpiration: 0 } };
 let signalProcess;
 let signalBinary = "/usr/local/bin/signal-cli";
 let signalFallback = signalBinary;
@@ -93,6 +93,7 @@ try {
 try {
   appState = { ...appState, ...JSON.parse(await readFile(join(APP_DIR, "state.json"), "utf8")) };
   appState.settings = { sendReadReceipts: true, sendTypingIndicators: true, linkPreviews: true, defaultExpiration: 0, ...(appState.settings || {}) };
+  appState.localNicknames ||= {};
 } catch {}
 
 function log(message, extra = "") {
@@ -566,6 +567,29 @@ async function api(req, res, url) {
   if (url.pathname === "/api/mindful" && req.method === "GET") {
     const day = url.searchParams.get("day");
     return json(res, 200, { usage: day ? appState.mindfulUsage?.[day] || null : null });
+  }
+
+  if (url.pathname === "/api/local-nicknames" && req.method === "GET") {
+    const conversationId = String(url.searchParams.get("conversationId") || "");
+    if (!conversationId || conversationId.length > 300) return json(res, 400, { error: "Invalid conversation" });
+    return json(res, 200, { nicknames: appState.localNicknames?.[conversationId] || {} });
+  }
+
+  if (url.pathname === "/api/local-nicknames" && req.method === "POST") {
+    const input = await body(req);
+    const conversationId = String(input.conversationId || "");
+    if (!conversationId || conversationId.length > 300) return json(res, 400, { error: "Invalid conversation" });
+    const nicknames = {};
+    for (const [name, nickname] of Object.entries(input.nicknames || {})) {
+      const source = String(name).trim();
+      const local = String(nickname).trim();
+      if (source && source.length <= 160 && local && local.length <= 40) nicknames[source] = local;
+    }
+    appState.localNicknames ||= {};
+    if (Object.keys(nicknames).length) appState.localNicknames[conversationId] = nicknames;
+    else delete appState.localNicknames[conversationId];
+    await persistState();
+    return json(res, 200, { nicknames });
   }
   if (url.pathname === "/api/mindful" && req.method === "POST") {
     const input = await body(req);

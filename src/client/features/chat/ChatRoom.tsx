@@ -5,6 +5,7 @@ import { AppIcon } from '../../components/AppIcon';
 import { ChatOptions } from './ChatOptions';
 import {
 	GroupSettings,
+	LocalNicknameEditor,
 	PinnedMessages,
 	PollComposer,
 	SafetyNumber,
@@ -22,7 +23,7 @@ import { readMessagePage, writeMessagePage } from '../../cache/snapshots';
 import { useFocusManager, type ArrowKey } from '../../platform/Focus';
 import { useSoftkeys } from '../../platform/Softkeys';
 import { useMessagingServices } from '../../services/ServiceContext';
-import { widgetToken } from '../../api/client';
+import { api, widgetToken } from '../../api/client';
 import type {
 	MessagePage,
 	ServiceCapabilities,
@@ -459,7 +460,8 @@ export function ChatRoom({ conversation, initialMessage, onBack }: Props) {
 	>();
 	const [actionMessage, setActionMessage] = useState<UniversalMessage>();
 	const [showOptions, setShowOptions] = useState(false);
-	const [optionPanel, setOptionPanel] = useState<'pins' | 'poll' | 'group' | 'safety' | 'search'>();
+	const [optionPanel, setOptionPanel] = useState<'pins' | 'poll' | 'group' | 'safety' | 'search' | 'local-names'>();
+	const [localNicknames, setLocalNicknames] = useState<Record<string, string>>({});
 	const [voiceOpen, setVoiceOpen] = useState(false);
 	const [attachmentOpen, setAttachmentOpen] = useState(false);
 	const [stickerOpen, setStickerOpen] = useState(false);
@@ -534,6 +536,12 @@ export function ChatRoom({ conversation, initialMessage, onBack }: Props) {
 			return undefined;
 		}
 	};
+
+	useEffect(() => {
+		void api<{ nicknames: Record<string, string> }>(
+			`/api/local-nicknames?conversationId=${encodeURIComponent(conversation.id)}`,
+		).then((response) => setLocalNicknames(response.nicknames)).catch(() => setLocalNicknames({}));
+	}, [conversation.id]);
 
 	useEffect(() => {
 		if (initialMessage) {
@@ -659,6 +667,19 @@ export function ChatRoom({ conversation, initialMessage, onBack }: Props) {
 		const viewportTop = timeline.getBoundingClientRect().top;
 		if (top < viewportTop) timeline.scrollBy({ top: top - viewportTop });
 	};
+
+	const localName = (name?: string) => (name ? localNicknames[name] || name : name);
+	const displayMessage = (message: UniversalMessage): UniversalMessage => ({
+		...message,
+		sender: localName(message.sender),
+		quote: message.quote ? { ...message.quote, author: localName(message.quote.author) || message.quote.author } : undefined,
+		reactions: message.reactions.map((reaction) => ({ ...reaction, author: localName(reaction.author) || reaction.author })),
+	});
+	const localPeople = [...new Set([
+		...(conversation.kind === 'direct' && !conversation.isNoteToSelf ? [conversation.title] : []),
+		...currentConversation.members.map((member) => member.name),
+		...(page?.messages.filter((message) => message.direction === 'incoming').map((message) => message.sender).filter(Boolean) ?? []),
+	])].filter((name): name is string => Boolean(name));
 
 	const markReadAtBottom = () => {
 		const timeline = timelineRef.current;
@@ -1372,6 +1393,26 @@ export function ChatRoom({ conversation, initialMessage, onBack }: Props) {
 		);
 	}
 
+	if (optionPanel === 'local-names') {
+		return (
+			<LocalNicknameEditor
+				people={localPeople}
+				nicknames={localNicknames}
+				onSave={(nicknames) => {
+					void api<{ nicknames: Record<string, string> }>('/api/local-nicknames', {
+						method: 'POST',
+						body: JSON.stringify({ conversationId: conversation.id, nicknames }),
+					})
+						.then((response) => {
+							setLocalNicknames(response.nicknames);
+							setOptionPanel(undefined);
+						})
+						.catch((reason) => setError(reason instanceof Error ? reason.message : 'Unable to save local names'));
+				}}
+			/>
+		);
+	}
+
 	if (showOptions) {
 		return (
 			<ChatOptions
@@ -1411,7 +1452,11 @@ export function ChatRoom({ conversation, initialMessage, onBack }: Props) {
 						.then(refreshAfterOption)
 						.catch((reason) =>
 							setError(reason instanceof Error ? reason.message : 'Unable to handle group invitation'),
-						);
+					);
+				}}
+				onLocalNames={() => {
+					setShowOptions(false);
+					setOptionPanel('local-names');
 				}}
 			/>
 		);
@@ -1420,7 +1465,7 @@ export function ChatRoom({ conversation, initialMessage, onBack }: Props) {
 	return (
 		<main class={styles.room}>
 			<header class={styles.header}>
-				<span class={styles.title}>{conversation.title}</span>
+				<span class={styles.title}>{localName(conversation.title)}</span>
 				<span class={styles.service}>{conversation.serviceId}</span>
 			</header>
 			<section
@@ -1440,6 +1485,7 @@ export function ChatRoom({ conversation, initialMessage, onBack }: Props) {
 				{error && <p class={styles.error}>{error}</p>}
 				{!error && !page && <p class={styles.empty}>Loading messages…</p>}
 				{page?.messages.map((message) => {
+					const shownMessage = displayMessage(message);
 					const day = new Date(message.sentAt).toDateString();
 					const showDate = day !== currentDay;
 					currentDay = day;
@@ -1476,9 +1522,9 @@ export function ChatRoom({ conversation, initialMessage, onBack }: Props) {
 								</div>
 							)}
 							{showUnread && <div class={styles.unreadMarker}>Unread messages</div>}
-							{showSender && <span class={styles.sender}>{message.sender}</span>}
+							{showSender && <span class={styles.sender}>{localName(message.sender)}</span>}
 							<MessageBubble
-								message={message}
+								message={shownMessage}
 								showTime={showTime}
 								groupStart={groupStart}
 								onOpenMedia={(index = 0) => openMedia(message, index)}
@@ -1505,7 +1551,7 @@ export function ChatRoom({ conversation, initialMessage, onBack }: Props) {
 					);
 				})}
 				{page?.typingNames.length ? (
-					<div class={styles.typing} aria-label={`${page.typingNames.join(', ')} typing`}>
+					<div class={styles.typing} aria-label={`${page.typingNames.map(localName).join(', ')} typing`}>
 						<span />
 						<span />
 						<span />
