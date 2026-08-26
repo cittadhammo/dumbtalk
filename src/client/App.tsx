@@ -34,22 +34,6 @@ function cachedStatus(): Status | undefined {
 	}
 }
 
-function StartupScreen() {
-	useSoftkeys(
-		{
-			right: { label: 'Exit', onPress: () => window.close() },
-		},
-		[],
-	);
-
-	return (
-		<main class={`${styles.screen} ${styles.centered}`}>
-			<img class={styles.logo} src="/dumbtalk.png" alt="" />
-			<p>Starting DumbTalk…</p>
-		</main>
-	);
-}
-
 function ErrorScreen({ message, retry }: { message: string; retry: () => void }) {
 	const { activate } = useFocusManager();
 
@@ -199,9 +183,9 @@ function Boot() {
 		return <ErrorScreen message={error} retry={load} />;
 	}
 
-	if (!status || !status.signalReady) {
-		return <StartupScreen />;
-	}
+	// Render the cached conversation shell immediately. The service provider
+	// refreshes status and conversations in the background without a splash.
+	if (!status || !status.signalReady) return <MessagingServiceProvider><UnifiedApp /></MessagingServiceProvider>;
 
 	if (!(status.anyLinked ?? status.linked)) {
 		return (

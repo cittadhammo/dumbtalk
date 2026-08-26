@@ -1262,7 +1262,9 @@ export class TelegramService {
       const temporary = join(this.mediaDir, `upload-${randomBytes(8).toString("hex")}-${filename}`);
       try {
         await writeFile(temporary, bytes, { mode: 0o600 });
-        await this.client.sendMedia(target, temporary, { caption });
+        // mtcute treats every bare string as a Telegram file ID. The explicit
+        // file: prefix makes this local path an upload source instead.
+        await this.client.sendMedia(target, `file:${temporary}`, { caption });
       } finally {
         await unlink(temporary).catch(() => {});
       }
@@ -1275,7 +1277,7 @@ export class TelegramService {
       const temporary = join(this.mediaDir, `voice-${randomBytes(8).toString("hex")}.ogg`);
       try {
         await writeFile(temporary, bytes, { mode: 0o600 });
-        await this.client.sendMedia(target, { type: "voice", file: temporary });
+        await this.client.sendMedia(target, { type: "voice", file: `file:${temporary}` });
       } finally {
         await unlink(temporary).catch(() => {});
       }

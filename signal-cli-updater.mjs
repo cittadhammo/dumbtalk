@@ -29,7 +29,7 @@ export async function prepareSignalCli({ dataDir, bundledBinary = "/usr/local/bi
   const statePath = join(runtime, "current.json");
   await mkdir(versions, { recursive: true });
   const previous = await metadata(statePath);
-  const previousBinary = previous?.binary && existsSync(previous.binary) ? previous.binary : bundledBinary;
+  const previousBinary = previous?.format === "jvm" && previous?.binary && existsSync(previous.binary) ? previous.binary : bundledBinary;
   const result = { binary: previousBinary, fallback: bundledBinary, version: previous?.version || "bundled", update: "disabled" };
   if (process.env.SIGNAL_CLI_AUTO_UPDATE === "false") return result;
   result.update = "checking";
@@ -41,11 +41,11 @@ export async function prepareSignalCli({ dataDir, bundledBinary = "/usr/local/bi
     if (!response.ok) throw new Error(`release check returned ${response.status}`);
     const release = await response.json();
     const version = String(release.tag_name || "").replace(/^v/, "");
-    const asset = (release.assets || []).find(item => item.name === `signal-cli-${version}-Linux-native.tar.gz`);
-    if (!version || !asset) throw new Error("latest release has no Linux native asset");
+    const asset = (release.assets || []).find(item => item.name === `signal-cli-${version}.tar.gz`);
+    if (!version || !asset) throw new Error("latest release has no JVM asset");
     const minimumAge = Number(process.env.SIGNAL_CLI_UPDATE_MIN_AGE_HOURS || 24) * 3_600_000;
     if (Date.now() - new Date(release.published_at).getTime() < minimumAge) { result.update = "waiting"; return result; }
-    if (previous?.version === version && existsSync(previousBinary)) { result.update = "current"; return result; }
+    if (previous?.format === "jvm" && previous?.version === version && existsSync(previousBinary)) { result.update = "current"; return result; }
     if (!String(asset.digest || "").startsWith("sha256:")) throw new Error("release asset has no trusted SHA-256 digest");
     const archive = join(runtime, `${version}.tar.gz.partial`);
     const download = await fetch(asset.browser_download_url, { headers: { "user-agent": "dumbtalk" } });
@@ -58,10 +58,10 @@ export async function prepareSignalCli({ dataDir, bundledBinary = "/usr/local/bi
     const target = join(versions, version);
     await rm(target, { recursive: true, force: true }); await mkdir(target, { recursive: true });
     await run("tar", ["-xzf", archive, "-C", target], 120_000); await rm(archive, { force: true });
-    const binary = join(target, "signal-cli"); await chmod(binary, 0o755);
+    const binary = join(target, `signal-cli-${version}`, "bin", "signal-cli"); await chmod(binary, 0o755);
     const reported = await run(binary, ["--version"]);
     if (!reported.stdout.includes(version) && !reported.stderr.includes(version)) throw new Error("downloaded binary reports an unexpected version");
-    await save(statePath, { version, binary, previousBinary, installedAt: Date.now() });
+    await save(statePath, { version, binary, previousBinary, format: "jvm", installedAt: Date.now() });
     log(`signal-cli ${version} staged and selected`);
     return { binary, fallback: previousBinary, version, update: "updated" };
   } catch (error) {
