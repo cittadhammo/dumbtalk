@@ -47,38 +47,6 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Ensure Docker Hub repository exists
-        env:
-          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          login_payload="$(jq -n \
-            --arg identifier "$DOCKERHUB_USERNAME" \
-            --arg secret "$DOCKERHUB_TOKEN" \
-            '{identifier: $identifier, secret: $secret}')"
-          hub_token="$(curl -fsS \
-            -H 'content-type: application/json' \
-            --data "$login_payload" \
-            https://hub.docker.com/v2/auth/token | jq -er '.access_token')"
-          repository_url="https://hub.docker.com/v2/repositories/$DOCKERHUB_USERNAME/dumbtalk/"
-          status="$(curl -sS -o /dev/null -w '%{http_code}' \
-            -H "Authorization: Bearer $hub_token" \
-            "$repository_url")"
-          if [ "$status" = 404 ]; then
-            create_payload="$(jq -n \
-              --arg namespace "$DOCKERHUB_USERNAME" \
-              '{namespace: $namespace, name: "dumbtalk", description: "Self-hosted messaging for CloudPhone feature phones", is_private: false}')"
-            curl -fsS \
-              -H "Authorization: Bearer $hub_token" \
-              -H 'content-type: application/json' \
-              --data "$create_payload" \
-              "https://hub.docker.com/v2/repositories/$DOCKERHUB_USERNAME/" >/dev/null
-          elif [ "$status" != 200 ]; then
-            echo "Docker Hub repository check returned HTTP $status" >&2
-            exit 1
-          fi
-
       - name: Log in to Docker Hub
         uses: docker/login-action@v3
         with:
