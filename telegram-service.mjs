@@ -129,6 +129,7 @@ export class TelegramService {
     this.dataDir = join(dataDir, "telegram");
     this.mediaDir = join(this.dataDir, "media");
     this.statePath = join(this.dataDir, "state.json");
+    this.configPath = join(this.dataDir, "config.json");
     this.apiId = Number(apiId);
     this.apiHash = apiHash;
     this.log = log;
@@ -157,6 +158,14 @@ export class TelegramService {
   }
 
   async initialize() {
+    if (!this.configured) {
+      try {
+        const config = JSON.parse(await readFile(this.configPath, "utf8"));
+        this.apiId = Number(config.apiId);
+        this.apiHash = config.apiHash;
+        this.configured = Number.isSafeInteger(this.apiId) && this.apiId > 0 && Boolean(this.apiHash);
+      } catch {}
+    }
     if (!this.configured) return;
 
     await mkdir(this.mediaDir, { recursive: true });
@@ -176,6 +185,24 @@ export class TelegramService {
     });
     this.bindUpdates();
     await this.refreshAuthorization();
+  }
+
+  async configure(apiId, apiHash) {
+    const parsedId = Number(apiId);
+    const parsedHash = String(apiHash || "").trim();
+    if (!Number.isSafeInteger(parsedId) || parsedId <= 0) throw new Error("Enter a valid Telegram API ID");
+    if (!/^[a-f0-9]{32}$/i.test(parsedHash)) throw new Error("Enter the 32-character Telegram API hash");
+    if (this.client) throw new Error("Telegram is already configured");
+
+    await mkdir(this.dataDir, { recursive: true });
+    const temporary = `${this.configPath}.tmp`;
+    await writeFile(temporary, JSON.stringify({ apiId: parsedId, apiHash: parsedHash }), { mode: 0o600 });
+    await rename(temporary, this.configPath);
+    this.apiId = parsedId;
+    this.apiHash = parsedHash;
+    this.configured = true;
+    await this.initialize();
+    return this.statusPayload();
   }
 
   bindUpdates() {
@@ -903,6 +930,10 @@ export class TelegramService {
     if (path === "/status" && req.method === "GET") {
       if (this.configured) await this.refreshAuthorization();
       return json(res, 200, this.statusPayload());
+    }
+    if (path === "/configure" && req.method === "POST") {
+      const input = await body(req);
+      return json(res, 200, await this.configure(input.apiId, input.apiHash));
     }
     if (!this.configured) return json(res, 409, { error: "Telegram API credentials are not configured" });
 

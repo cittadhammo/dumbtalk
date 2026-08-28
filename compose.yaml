@@ -1,12 +1,12 @@
 services:
   cloudphone-signal:
-    build: .
-    image: cloudphone-signal:local
+    image: samtate96/dumbtalk:latest
+    pull_policy: always
     container_name: cloudphone-signal
     restart: unless-stopped
     environment:
-      WIDGET_TOKEN: ${WIDGET_TOKEN:?Set WIDGET_TOKEN in .env}
-      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:?Set PUBLIC_ORIGIN in .env}
+      WIDGET_TOKEN: ${WIDGET_TOKEN:-}
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-}
       DEVICE_NAME: ${DEVICE_NAME:-DumbTalk}
       SIGNAL_CLI_AUTO_UPDATE: ${SIGNAL_CLI_AUTO_UPDATE:-true}
       SIGNAL_CLI_UPDATE_MIN_AGE_HOURS: ${SIGNAL_CLI_UPDATE_MIN_AGE_HOURS:-24}
@@ -18,4 +18,4 @@ services:
     volumes:
       - ./data:/data
     ports:
-      - "${BIND_ADDRESS:-127.0.0.1}:${HOST_PORT:-8787}:8080"
+      - "${BIND_ADDRESS:-0.0.0.0}:${HOST_PORT:-8787}:8080"

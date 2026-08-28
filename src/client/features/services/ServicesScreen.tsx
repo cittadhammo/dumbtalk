@@ -321,7 +321,7 @@ function SetupServiceScreen({
 						{step.hint && <p class={styles.note}>{step.hint}</p>}
 						<FocusInput
 							id="setup-input"
-							type={step.field === 'password' ? 'password' : step.field === 'phone' ? 'tel' : 'text'}
+							type={step.field === 'password' || step.field === 'api-hash' ? 'password' : step.field === 'phone' ? 'tel' : 'text'}
 							class={styles.input}
 							value={inputValue}
 							placeholder={step.placeholder}

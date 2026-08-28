@@ -9,9 +9,12 @@ test("CloudPhone source page avoids inline scripts and styles", async () => {
   assert.doesNotMatch(html, /\son(?:click|error|load)=/i);
 });
 
-test("compose binds the public service to loopback by default", async () => {
+test("compose is reachable for first-run LAN setup by default", async () => {
   const compose = await readFile(new URL("../compose.yaml", import.meta.url), "utf8");
-  assert.match(compose, /\$\{BIND_ADDRESS:-127\.0\.0\.1\}:\$\{HOST_PORT:-8787\}:8080/);
+  assert.match(compose, /\$\{BIND_ADDRESS:-0\.0\.0\.0\}:\$\{HOST_PORT:-8787\}:8080/);
+  assert.match(compose, /image: samtate96\/dumbtalk:latest/);
+  assert.match(compose, /pull_policy: always/);
+  assert.doesNotMatch(compose, /build:/);
 });
 
 test("requested messaging and conversation backend features remain wired", async () => {
@@ -66,19 +69,22 @@ test("requested messaging and conversation backend features remain wired", async
   );
 });
 
-test("widget authentication is token-only and avoids URL token leakage", async () => {
+test("widget authentication supports first-run claiming and avoids URL token leakage", async () => {
   const server = await readFile(new URL("../server.mjs", import.meta.url), "utf8");
   const compose = await readFile(new URL("../compose.yaml", import.meta.url), "utf8");
   const client = await readFile(new URL("../src/client/api/client.ts", import.meta.url), "utf8");
-  assert.match(server, /WIDGET_TOKEN must be a 256-bit random token/);
+  assert.match(server, /randomBytes\(32\)\.toString\("base64url"\)/);
+  assert.match(server, /data\/app|CONFIG_PATH/);
+  assert.match(server, /url\.pathname === "\/api\/setup\/claim"/);
   assert.match(server, /function tokenMatches\(req\)/);
   assert.match(server, /return json\(res, 404, \{ error: "Not found" \}\)/);
   assert.match(server, /url\.pathname === "\/api\/mindful"/);
   assert.doesNotMatch(server, /ADMIN_PASSWORD/);
   assert.doesNotMatch(server, /signal_session/);
-  assert.match(compose, /WIDGET_TOKEN/);
+  assert.match(compose, /WIDGET_TOKEN: \$\{WIDGET_TOKEN:-\}/);
   assert.doesNotMatch(compose, /ADMIN_PASSWORD|SESSION_SECRET/);
   assert.match(client, /window\.location\.hash\.slice\(1\)/);
+  assert.match(client, /claimInstallation/);
   assert.match(client, /authorization: `Bearer \$\{widgetToken\(\)\}`/);
   assert.doesNotMatch(client, /\/api\/login/);
 });

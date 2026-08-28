@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'preact/hooks';
-import { api, ApiError, hasWidgetToken } from './api/client';
+import { api, ApiError, claimInstallation, hasWidgetToken } from './api/client';
 import { FocusButton } from './components/FocusButton';
 import { ChatRoom } from './features/chat/ChatRoom';
 import {
@@ -154,7 +154,10 @@ function Boot() {
 
 	const load = useCallback(() => {
 		if (!hasWidgetToken()) {
-			setError('This widget is not configured.');
+			setError(undefined);
+			void claimInstallation().then(() => window.location.reload()).catch((reason: unknown) => {
+				setError(reason instanceof Error ? reason.message : 'Unable to set up DumbTalk');
+			});
 			return;
 		}
 

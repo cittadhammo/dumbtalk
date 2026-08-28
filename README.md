@@ -1,70 +1,61 @@
 # DumbTalk
 
-A small, self-hosted, D-pad-first messaging client for QVGA CloudPhone feature phones. Signal,
-Telegram, and WhatsApp share one inbox; each account remains in its own isolated service data
-directory. DumbTalk is unofficial and is not affiliated with Signal, Telegram, WhatsApp, or
-CloudMosa.
+DumbTalk is a small, self-hosted, D-pad-first messaging client for QVGA CloudPhone feature
+phones. Signal, Telegram, and WhatsApp share one inbox while each account remains isolated in its
+own service data directory.
 
-DumbTalk supports contacts, groups, text and voice messages, replies, reactions, editing,
-deletion, receipts, typing, synced archives, disappearing messages, polls, pins, inline media,
-attachments, cross-service forwarding, search, avatars, group management, and Signal safety
-numbers. Menus hide operations that a service does not support.
+It supports contacts, groups, text and voice messages, replies, reactions, editing, deletion,
+receipts, typing, synced archives, disappearing messages, polls, pins, inline media, attachments,
+cross-service forwarding, search, avatars, group management, and Signal safety numbers. Menus
+hide operations that a service does not support.
 
-Signal does not provide linked devices with existing message history, so DumbTalk only shows
-messages received or sent after it is linked. Calls are not supported.
+DumbTalk is unofficial and is not affiliated with Signal, Telegram, WhatsApp, or CloudMosa.
 
-## Run it
+## Get started
 
-You need Docker Compose on a Linux x86-64 host and an HTTPS reverse proxy. Copy `.env.example`
-to `.env`, then set:
-
-```dotenv
-WIDGET_TOKEN=generate-with-openssl-rand-base64-32-and-convert-to-base64url
-PUBLIC_ORIGIN=https://signal.example.com
-DEVICE_NAME=DumbTalk
-TELEGRAM_API_ID=123456
-TELEGRAM_API_HASH=your-api-hash
-WACLI_DEVICE_LABEL=DumbTalk
-```
-
-The Telegram values are optional and come from [my.telegram.org](https://my.telegram.org). Leave
-them empty if you do not use Telegram. WhatsApp uses the bundled `wacli` linked-device client and
-needs no API credentials.
-
-Start DumbTalk:
+You need a Linux x86-64 or ARM64 host with Docker Compose. Download the deployment file and start
+the published image—no source checkout or local build is required.
 
 ```sh
-docker compose up -d --build
-docker compose logs -f cloudphone-signal
+mkdir dumbtalk
+cd dumbtalk
+curl -fsSLO https://raw.githubusercontent.com/samtate/dumbtalk/main/compose.yaml
+curl -fsSLO https://raw.githubusercontent.com/samtate/dumbtalk/main/src/client/public/dumbtalk.png
+docker compose up -d
 ```
 
-It listens on `127.0.0.1:8787` by default. Point your HTTPS reverse proxy at that address and
-set the CloudPhone widget URL to `PUBLIC_ORIGIN/#WIDGET_TOKEN`. Connect services from DumbTalk’s
-Services screen. Signal and WhatsApp use linked-device QR codes; Telegram supports either its
-Devices QR or a phone number, Telegram login code, and optional two-step-verification password.
-Never expose signal-cli's internal port `7583`.
+Open `http://YOUR-SERVER-IP:8787`. The first browser to open a new installation claims it and
+receives a generated access key. DumbTalk then guides you through connecting a messaging service.
+No `.env` file is required.
 
-Signal linked-device keys, Telegram and WhatsApp sessions, cached messages, and decrypted media
-are stored in `./data`. Keep that directory and `.env` private and backed up. Anyone with either the data or `WIDGET_TOKEN` may be
-able to read your messages. The fragment token is intentionally not sent in HTTP request paths,
-DNS, or referrers; the client sends it only in same-origin API authorization headers.
+The local address is only for configuring DumbTalk in your browser. CloudPhone's servers—not the
+phone itself—fetch and process the widget, so the final widget URL must be publicly reachable.
 
-The bundled signal-cli is automatically updated from stable releases with checksum validation,
-health checking, and rollback. This matters because old versions can stop working with Signal.
-`wacli` is installed from a checksum-verified official release archive. Update the pinned release
-version when you rebuild the image to pick up a newer WhatsApp bridge.
+For public HTTPS, CGNAT-friendly options, and the CloudPhone developer-site steps,
+follow **[Setup and deployment](docs/setup.md)**.
 
-## CloudPhone
+## Important limitations
 
-Create an unpublished CloudPhone widget pointing to `PUBLIC_ORIGIN/#WIDGET_TOKEN`, using
-`src/client/public/dumbtalk.png` as its icon. Add your phone's IMEI in the developer portal and enable
-developer mode. The D-pad navigates, Centre selects, Left opens menus, and Right goes back.
+- Signal cannot sync earlier history to a newly linked device. DumbTalk shows only messages sent
+  or received after linking.
+- Calls are not supported.
+- Telegram requires an API ID and API hash from
+  [my.telegram.org](https://my.telegram.org); DumbTalk asks for them only when Telegram is selected.
+- Signal keys, Telegram and WhatsApp sessions, messages, configuration, and decrypted media live
+  in `./data`. Keep this directory private and backed up.
 
 ## Development
 
 ```sh
 npm install
 npm test
+npm run typecheck:client
+npm run build:client
 ```
 
-The client uses Preact, TypeScript and SCSS modules, compiled to browser-compatible static assets.
+The client uses Preact, TypeScript, and SCSS modules compiled to browser-compatible static assets.
+See [service adapter notes](docs/service-adapters.md) for the internal service contract.
+
+Commits to `main` are tested and published for AMD64 and ARM64 as
+[`samtate96/dumbtalk:latest`](https://hub.docker.com/r/samtate96/dumbtalk). The repository must define
+`DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` GitHub Actions secrets.

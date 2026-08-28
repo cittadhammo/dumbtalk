@@ -30,6 +30,9 @@ test("Telegram remains optional when API credentials are absent", async () => {
 
 test("Telegram integration contains native auth, read, reaction, and media paths", async () => {
   const source = await readFile(new URL("../telegram-service.mjs", import.meta.url), "utf8");
+  assert.match(source, /this\.configPath = join\(this\.dataDir, "config\.json"\)/);
+  assert.match(source, /async configure\(apiId, apiHash\)/);
+  assert.match(source, /path === "\/configure"/);
   for (const feature of [
     "signInQr",
     "sendCode",

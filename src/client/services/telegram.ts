@@ -230,13 +230,24 @@ export const telegramService: MessagingService = {
 		return {
 			id: 'telegram' as const,
 			label: 'Telegram',
-			ready: status.ready,
+			ready: true,
 			connected: status.connected,
 			accountLabel: status.accountLabel,
 		};
 	},
 
 	async beginSetup() {
+		const status = await api<TelegramStatus>(`${ROOT}/status`);
+		if (!status.configured) {
+			return {
+				kind: 'input' as const,
+				token: 'telegram-api-id',
+				title: 'Telegram API ID',
+				instructions: 'Create an application at my.telegram.org, then enter its numeric API ID.',
+				field: 'api-id' as const,
+				placeholder: '12345678',
+			};
+		}
 		return {
 			kind: 'choice' as const,
 			token: 'telegram-method',
@@ -250,6 +261,34 @@ export const telegramService: MessagingService = {
 	},
 
 	async advanceSetup(step, value) {
+		if (step.kind === 'input' && step.token === 'telegram-api-id') {
+			if (!/^\d+$/.test(value ?? '')) throw new Error('Enter the numeric API ID from my.telegram.org');
+			return {
+				kind: 'input' as const,
+				token: `telegram-api-hash:${value}`,
+				title: 'Telegram API hash',
+				instructions: 'Enter the API hash shown beside your API ID at my.telegram.org.',
+				field: 'api-hash' as const,
+				placeholder: '32-character hash',
+			};
+		}
+		if (step.kind === 'input' && step.token.startsWith('telegram-api-hash:')) {
+			const apiId = step.token.slice('telegram-api-hash:'.length);
+			await api<TelegramStatus>(`${ROOT}/configure`, {
+				method: 'POST',
+				body: JSON.stringify({ apiId, apiHash: value }),
+			});
+			return {
+				kind: 'choice' as const,
+				token: 'telegram-method',
+				title: 'Connect Telegram',
+				instructions: 'Choose how to sign in to your Telegram account.',
+				choices: [
+					{ value: 'qr', label: 'Scan QR', description: 'Approve from a signed-in Telegram device.' },
+					{ value: 'phone', label: 'Phone number', description: 'Receive a code in Telegram.' },
+				],
+			};
+		}
 		if (step.kind === 'choice') {
 			if (value === 'phone') {
 				return {

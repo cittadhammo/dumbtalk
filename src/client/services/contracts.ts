@@ -36,7 +36,7 @@ export type ServiceSetupStep =
 			token: string;
 			title: string;
 			instructions: string;
-			field: 'phone' | 'code' | 'password';
+			field: 'phone' | 'code' | 'password' | 'api-id' | 'api-hash';
 			placeholder?: string;
 			hint?: string;
 	  }

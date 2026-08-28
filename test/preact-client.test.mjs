@@ -116,6 +116,9 @@ test('Telegram is registered as a universal messaging service', async () => {
 	assert.match(adapter, /kind: 'choice'/);
 	assert.match(adapter, /allowedReactions/);
 	assert.match(adapter, /readThrough/);
+	assert.match(adapter, /telegram-api-id/);
+	assert.match(adapter, /telegram-api-hash/);
+	assert.match(adapter, /\/configure/);
 });
 
 test('WhatsApp is registered as a linked-device universal messaging service', async () => {

@@ -12,6 +12,7 @@ import { WhatsAppService } from "./whatsapp-service.mjs";
 const PORT = Number(process.env.PORT || 8080);
 const DATA_DIR = process.env.DATA_DIR || "/data";
 const APP_DIR = join(DATA_DIR, "app");
+const CONFIG_PATH = join(APP_DIR, "config.json");
 const MEDIA_DIR = join(APP_DIR, "media");
 const SIGNAL_DIR = join(DATA_DIR, "signal-cli");
 const PUBLIC_DIR = new URL("./public/", import.meta.url).pathname;
@@ -20,6 +21,8 @@ const EVENTS_URL = "http://127.0.0.1:7583/api/v1/events";
 const MAX_MESSAGES = 3000;
 const invalidTokenAttempts = new Map();
 let messages = [];
+let appConfig = {};
+let widgetToken = process.env.WIDGET_TOKEN || "";
 let appState = { archived: [], favorites: [], muted: [], readThrough: {}, expirations: {}, localNicknames: {}, mindfulUsage: {}, settings: { sendReadReceipts: true, sendTypingIndicators: true, linkPreviews: true, defaultExpiration: 0 } };
 let signalProcess;
 let signalBinary = "/usr/local/bin/signal-cli";
@@ -36,6 +39,17 @@ const typingState = new Map();
 const identityNames = new Map();
 const viewOnceTokens = new Map();
 let stateWrite = Promise.resolve();
+await mkdir(APP_DIR, { recursive: true });
+await mkdir(MEDIA_DIR, { recursive: true });
+await mkdir(SIGNAL_DIR, { recursive: true });
+try {
+  appConfig = JSON.parse(await readFile(CONFIG_PATH, "utf8"));
+} catch {}
+widgetToken ||= appConfig.widgetToken || "";
+if (widgetToken && Buffer.byteLength(widgetToken) < 43) {
+  throw new Error("WIDGET_TOKEN override must be a 256-bit random base64url token");
+}
+
 const telegram = new TelegramService({
   dataDir: DATA_DIR,
   apiId: process.env.TELEGRAM_API_ID,
@@ -75,16 +89,6 @@ function displayIdentity(value, fallback = "Unknown") {
   return suppliedName || identityNames.get(identifier) || identifier || fallback;
 }
 
-if (!process.env.WIDGET_TOKEN || Buffer.byteLength(process.env.WIDGET_TOKEN) < 43) {
-  throw new Error("WIDGET_TOKEN must be a 256-bit random token (for example: openssl rand -base64 32 | tr '+/' '-_' | tr -d '=')");
-}
-if (!process.env.PUBLIC_ORIGIN?.startsWith("https://")) {
-  throw new Error("PUBLIC_ORIGIN must be the public https:// origin");
-}
-
-await mkdir(APP_DIR, { recursive: true });
-await mkdir(MEDIA_DIR, { recursive: true });
-await mkdir(SIGNAL_DIR, { recursive: true });
 await telegram.initialize();
 await whatsapp.initialize();
 try {
@@ -499,7 +503,7 @@ async function listenForMessages() {
 function tokenMatches(req) {
   const supplied = req.headers.authorization?.match(/^Bearer (.+)$/i)?.[1];
   if (!supplied) return false;
-  const expected = Buffer.from(process.env.WIDGET_TOKEN);
+  const expected = Buffer.from(widgetToken);
   const actual = Buffer.from(supplied);
   return actual.length === expected.length && timingSafeEqual(actual, expected);
 }
@@ -518,7 +522,7 @@ function allowInvalidTokenAttempt(req) {
 
 function requireSameOrigin(req) {
   const origin = req.headers.origin;
-  if (!origin || origin === process.env.PUBLIC_ORIGIN) return true;
+  if (!origin || origin === process.env.PUBLIC_ORIGIN || origin === appConfig.publicOrigin) return true;
 
   // Also accept the origin through which this request actually arrived. This
   // supports local setup and reverse proxies without weakening the cross-site
@@ -549,7 +553,38 @@ async function body(req) {
   return value ? JSON.parse(value) : {};
 }
 
+async function persistConfig() {
+  const temporary = `${CONFIG_PATH}.tmp`;
+  await writeFile(temporary, JSON.stringify(appConfig), { mode: 0o600 });
+  await rename(temporary, CONFIG_PATH);
+}
+
+async function setup(req, res, url) {
+  if (url.pathname === "/api/setup/status" && req.method === "GET") {
+    return json(res, 200, { claimed: Boolean(widgetToken) });
+  }
+  if (url.pathname === "/api/setup/claim" && req.method === "POST") {
+    if (!requireSameOrigin(req)) return json(res, 403, { error: "Origin rejected" });
+    if (widgetToken) return json(res, 409, { error: "This DumbTalk installation has already been claimed" });
+
+    // Assignment happens before the first await, so simultaneous requests cannot
+    // both claim a fresh installation in Node's single event loop.
+    widgetToken = randomBytes(32).toString("base64url");
+    appConfig = { ...appConfig, widgetToken };
+    try {
+      await persistConfig();
+    } catch (error) {
+      widgetToken = "";
+      delete appConfig.widgetToken;
+      throw error;
+    }
+    return json(res, 201, { token: widgetToken });
+  }
+  return json(res, 404, { error: "Not found" });
+}
+
 async function api(req, res, url) {
+  if (url.pathname.startsWith("/api/setup/")) return setup(req, res, url);
   if (!tokenMatches(req)) {
     if (!allowInvalidTokenAttempt(req)) await new Promise(resolve => setTimeout(resolve, 250));
     // Deliberately indistinguishable whether the token was absent, wrong, or rate-limited.
