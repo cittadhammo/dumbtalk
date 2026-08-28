@@ -44,6 +44,92 @@ follow **[Setup and deployment](docs/setup.md)**.
 - Signal keys, Telegram and WhatsApp sessions, messages, configuration, and decrypted media live
   in `./data`. Keep this directory private and backed up.
 
+## FAQ
+
+### Why must DumbTalk have a public URL if my phone and server are on the same network?
+
+The CloudPhone does not fetch the widget itself. CloudMosa's servers fetch the page, process its
+DOM, and send the result to the phone. The widget URL must therefore be reachable from the public
+internet over HTTPS. A LAN address can be used by the owner during setup, but never as the final
+widget URL. See [Setup and deployment](docs/setup.md) for options that work behind CGNAT without
+port forwarding.
+
+### What does the `#...` part of the widget URL do?
+
+It is a randomly generated 256-bit bearer token. DumbTalk sends it in an API authorization header,
+and the URL fragment itself is not sent in HTTP request paths, DNS lookups, or normal referrer
+headers. Anyone who obtains the complete URL should nevertheless be treated as having full access
+to DumbTalk. Do not publish it, include it in screenshots, or save it in a shared bookmark service.
+
+### Is it safe to expose DumbTalk to the internet?
+
+DumbTalk has application-level safeguards, including a high-entropy access token, constant-time
+token comparison, same-origin checks for changes, strict browser security headers, bounded Signal
+uploads, authenticated internal WhatsApp webhooks, unprivileged application processes, and
+checksum validation for bundled messaging tools.
+
+It has not received a formal third-party security audit and should be treated as a personal
+self-hosted service, not a hardened multi-user or enterprise system. Operators should understand
+these concerns:
+
+- The first browser to open a fresh installation claims it. Complete initial setup before making
+  the service public, or pre-seed `WIDGET_TOKEN` for an automated public deployment.
+- DumbTalk is an endpoint for the linked accounts. Messages and media are decrypted on the server;
+  service-level end-to-end encryption does not protect them from the DumbTalk host, its
+  administrator, or malware on that host.
+- The access token is stored in `data/app/config.json`; service credentials, linked-device keys,
+  sessions, cached messages, and decrypted media are also stored under `data`. Files are created
+  with restrictive permissions, but disk encryption, host access control, and backup security are
+  the operator's responsibility.
+- Tailscale Funnel, Cloudflare Tunnel, and conventional reverse proxies terminate or relay HTTPS.
+  Use providers and proxy hosts you trust, secure their accounts with MFA, and keep the connection
+  from the proxy to DumbTalk private.
+- Port `8787` binds to all interfaces by default so initial setup works from another computer. Once
+  a same-host tunnel or reverse proxy is configured, set `BIND_ADDRESS=127.0.0.1` and use a firewall
+  so only the HTTPS entry point is public.
+- A valid token permits media uploads and messaging operations. Signal upload sizes are bounded,
+  but large or repeated media operations can still consume server memory and disk; WhatsApp's
+  upload path currently relies on upstream and host limits rather than its own explicit byte cap.
+- `samtate96/dumbtalk:latest` is convenient but is a moving tag. Automatic `signal-cli` updates are
+  delayed, checksum-validated, health-checked, and rolled back on failure, but installations still
+  trust the DumbTalk Docker Hub account, GitHub Actions, upstream base images, and the Signal,
+  Telegram, and WhatsApp bridge dependencies.
+
+Keep the host patched, expose only HTTPS, protect the complete widget URL, review updates, and
+maintain tested encrypted backups. Security reports should avoid including tokens, credentials,
+messages, session databases, or logs containing personal data.
+
+### What happens if I lose the widget URL?
+
+The generated token remains in `data/app/config.json`. A server administrator can read it locally
+and append it to the public origin as `https://your-host.example/#TOKEN`. Avoid printing it in a
+shared terminal session or support log. There is not yet an in-app token rotation or recovery flow.
+
+### Why does Telegram ask for an API ID and API hash before showing a QR code?
+
+The QR code links the user account, but DumbTalk must first identify itself to Telegram as an
+MTProto client application. Create the credentials at [my.telegram.org](https://my.telegram.org)
+and enter them when prompted. They are stored in `data/telegram/config.json`, not `.env`.
+
+### Can DumbTalk import my existing messages?
+
+Telegram and WhatsApp can sync history according to their linked-device APIs and configured
+limits. Signal does not provide existing history to a newly linked device, so its conversations
+begin with messages sent or received after DumbTalk is linked.
+
+### Can several people share one installation?
+
+That is not the intended security model. Every browser using the widget URL has the same authority,
+and connected accounts share one DumbTalk interface. Use a separate installation and data
+directory when users should not have access to one another's accounts or messages.
+
+### How do I update or back up DumbTalk?
+
+Pull and recreate the container as described in [Setup and deployment](docs/setup.md). Back up the
+entire `data` directory, preferably with encryption and while the container is stopped or through a
+filesystem snapshot so the service databases remain consistent. Test restoration rather than
+assuming a backup is usable.
+
 ## Development
 
 ```sh
