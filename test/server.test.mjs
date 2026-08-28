@@ -17,6 +17,13 @@ test("compose is reachable for first-run LAN setup by default", async () => {
   assert.doesNotMatch(compose, /build:/);
 });
 
+test("production image includes the Fastify server modules", async () => {
+  const dockerfile = await readFile(new URL("../Dockerfile", import.meta.url), "utf8");
+  const packageJson = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
+  assert.match(dockerfile, /COPY src\/server \.\/src\/server/);
+  assert.ok(packageJson.dependencies.fastify, "Fastify must be installed in the production image");
+});
+
 test("requested messaging and conversation backend features remain wired", async () => {
   const server = await readFile(new URL("../server.mjs", import.meta.url), "utf8");
   for (const route of [
@@ -51,7 +58,6 @@ test("requested messaging and conversation backend features remain wired", async
   }
   assert.match(server, /function normalizedMentions\(items\)/);
   assert.match(server, /function displayIdentity\(value, fallback = "Unknown"\)/);
-  assert.match(server, /import \{ randomBytes, timingSafeEqual \} from "node:crypto"/);
   assert.match(server, /Unknown member/);
   assert.match(
     server,
@@ -71,12 +77,14 @@ test("requested messaging and conversation backend features remain wired", async
 
 test("widget authentication supports first-run claiming and avoids URL token leakage", async () => {
   const server = await readFile(new URL("../server.mjs", import.meta.url), "utf8");
+  const security = await readFile(new URL("../src/server/http/security.mjs", import.meta.url), "utf8");
   const compose = await readFile(new URL("../compose.yaml", import.meta.url), "utf8");
   const client = await readFile(new URL("../src/client/api/client.ts", import.meta.url), "utf8");
   assert.match(server, /randomBytes\(32\)\.toString\("base64url"\)/);
   assert.match(server, /data\/app|CONFIG_PATH/);
   assert.match(server, /url\.pathname === "\/api\/setup\/claim"/);
-  assert.match(server, /function tokenMatches\(req\)/);
+  assert.match(server, /requestTokenMatches\(req, widgetToken\)/);
+  assert.match(security, /timingSafeEqual\(actual, expected\)/);
   assert.match(server, /return json\(res, 404, \{ error: "Not found" \}\)/);
   assert.match(server, /url\.pathname === "\/api\/mindful"/);
   assert.doesNotMatch(server, /ADMIN_PASSWORD/);

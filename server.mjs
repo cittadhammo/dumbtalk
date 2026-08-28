@@ -1,13 +1,18 @@
-import { createServer } from "node:http";
 import { createReadStream, existsSync } from "node:fs";
 import { mkdir, readFile, readdir, rename, rm, stat, unlink, writeFile } from "node:fs/promises";
 import { basename, extname, join, normalize } from "node:path";
-import { randomBytes, timingSafeEqual } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import { spawn } from "node:child_process";
 import QRCode from "qrcode";
 import { prepareSignalCli, rollBackSignalCli } from "./signal-cli-updater.mjs";
 import { TelegramService } from "./telegram-service.mjs";
 import { WhatsAppService } from "./whatsapp-service.mjs";
+import { createHttpApp } from "./src/server/http-app.mjs";
+import {
+  InvalidTokenLimiter,
+  requireSameOrigin as requestHasSameOrigin,
+  tokenMatches as requestTokenMatches,
+} from "./src/server/http/security.mjs";
 
 const PORT = Number(process.env.PORT || 8080);
 const DATA_DIR = process.env.DATA_DIR || "/data";
@@ -19,7 +24,7 @@ const PUBLIC_DIR = new URL("./public/", import.meta.url).pathname;
 const RPC_URL = "http://127.0.0.1:7583/api/v1/rpc";
 const EVENTS_URL = "http://127.0.0.1:7583/api/v1/events";
 const MAX_MESSAGES = 3000;
-const invalidTokenAttempts = new Map();
+const invalidTokenLimiter = new InvalidTokenLimiter();
 let messages = [];
 let appConfig = {};
 let widgetToken = process.env.WIDGET_TOKEN || "";
@@ -501,37 +506,18 @@ async function listenForMessages() {
 }
 
 function tokenMatches(req) {
-  const supplied = req.headers.authorization?.match(/^Bearer (.+)$/i)?.[1];
-  if (!supplied) return false;
-  const expected = Buffer.from(widgetToken);
-  const actual = Buffer.from(supplied);
-  return actual.length === expected.length && timingSafeEqual(actual, expected);
-}
-
-function requestIp(req) {
-  return String(req.headers["x-forwarded-for"] || req.socket.remoteAddress || "unknown").split(",")[0].trim();
+  return requestTokenMatches(req, widgetToken);
 }
 
 function allowInvalidTokenAttempt(req) {
-  const now = Date.now(); const ip = requestIp(req);
-  const attempt = invalidTokenAttempts.get(ip) || { count: 0, resetAt: now + 60_000 };
-  if (now >= attempt.resetAt) { attempt.count = 0; attempt.resetAt = now + 60_000; }
-  attempt.count += 1; invalidTokenAttempts.set(ip, attempt);
-  return attempt.count <= 30;
+  return invalidTokenLimiter.allow(req);
 }
 
 function requireSameOrigin(req) {
-  const origin = req.headers.origin;
-  if (!origin || origin === process.env.PUBLIC_ORIGIN || origin === appConfig.publicOrigin) return true;
-
-  // Also accept the origin through which this request actually arrived. This
-  // supports local setup and reverse proxies without weakening the cross-site
-  // check: a browser cannot choose a Host header independently of its target.
-  const forwardedHost = req.headers["x-forwarded-host"]?.split(",")[0].trim();
-  const host = forwardedHost || req.headers.host;
-  const forwardedProto = req.headers["x-forwarded-proto"]?.split(",")[0].trim();
-  const protocol = forwardedProto || (req.socket.encrypted ? "https" : "http");
-  return Boolean(host) && origin === `${protocol}://${host}`;
+  return requestHasSameOrigin(req, {
+    publicOrigin: process.env.PUBLIC_ORIGIN,
+    configuredOrigin: appConfig.publicOrigin,
+  });
 }
 
 function json(res, status, body, headers = {}) {
@@ -1335,13 +1321,12 @@ async function staticFile(req, res, url) {
   }
 }
 
-const server = createServer(async (req, res) => {
+async function legacyRequestHandler(req, res) {
   try {
     const url = new URL(req.url, "http://localhost");
     if (url.pathname === "/internal/wacli/webhook" && req.method === "POST") {
       return whatsapp.handleWebhook(req, res);
     }
-    if (url.pathname === "/healthz") return json(res, signalReady ? 200 : 503, { ok: signalReady });
     if (url.pathname === "/favicon.ico") {
       res.writeHead(204, { "cache-control": "public, max-age=86400" });
       return res.end();
@@ -1353,15 +1338,17 @@ const server = createServer(async (req, res) => {
     if (!res.headersSent) json(res, 500, { error: error.message || "Internal error" });
     else res.end();
   }
-});
+}
 
 startSignal();
-server.listen(PORT, "0.0.0.0", () => log(`web UI listening on ${PORT}`));
+const server = createHttpApp({ legacyHandler: legacyRequestHandler, health: () => signalReady });
+await server.listen({ port: PORT, host: "0.0.0.0" });
+log(`web UI listening on ${PORT}`);
 
 function shutdown() {
   shuttingDown = true;
   signalReady = false;
-  server.close();
+  void server.close();
   signalProcess?.kill("SIGTERM");
   void telegram.shutdown();
   void whatsapp.shutdown();

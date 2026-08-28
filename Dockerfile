@@ -54,6 +54,7 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm install --omit=dev && npm cache clean --force
 COPY server.mjs ./
+COPY src/server ./src/server
 COPY telegram-service.mjs ./
 COPY whatsapp-service.mjs ./
 COPY signal-cli-updater.mjs ./
