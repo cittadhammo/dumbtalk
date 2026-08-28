@@ -71,6 +71,17 @@ sudo tailscale funnel --bg http://127.0.0.1:8787
 Tailscale prints an `https://...ts.net` address. Availability and account requirements are
 documented in the official [Tailscale Funnel guide](https://tailscale.com/kb/1223/funnel).
 
+The simple Funnel configuration above does not preserve the public client's source IP for the
+HTTP service, so DumbTalk or a conventional HTTP reverse proxy behind it cannot reliably apply a
+CloudPhone IP allowlist. The generated widget key remains the access control in this mode. If IP
+restriction is important, prefer Cloudflare Tunnel or a conventional reverse proxy below.
+
+Funnel does have an advanced
+[PROXY protocol mode](https://tailscale.com/docs/reference/tailscale-cli/funnel) which can preserve
+the source address, but it requires a local proxy that understands PROXY protocol v2. Do not enable
+it unless that proxy is configured to accept and validate the header; the normal command above is
+the appropriate setup for most users.
+
 ### B. Cloudflare Tunnel — stable domain without port forwarding
 
 Use this when your DNS is on Cloudflare or you are comfortable moving a hostname there. A named
@@ -108,7 +119,108 @@ BIND_ADDRESS=127.0.0.1
 
 Then recreate the container with `docker compose up -d`.
 
-## 3. Build the CloudPhone widget URL
+## 3. Restrict access to CloudPhone's servers
+
+Where possible, configure the public entry point to accept widget requests only from CloudMosa's
+published data-centre addresses. This substantially reduces DumbTalk's public attack surface, but
+is defence in depth rather than a replacement for the generated widget key.
+
+CloudMosa currently publishes these source addresses:
+
+```text
+203.116.120.0/24
+203.116.121.0/24
+203.116.134.0/24
+203.208.133.0/24
+45.33.136.0/22
+45.33.140.0/22
+129.151.177.210
+129.151.168.109
+129.151.182.81
+129.151.161.66
+129.151.172.12
+129.151.166.100
+129.151.183.189
+129.151.168.167
+84.8.136.215
+84.8.138.38
+84.8.138.97
+84.8.140.68
+84.8.132.90
+79.72.56.168
+79.72.60.209
+79.72.59.11
+143.47.37.176
+143.47.33.53
+143.47.55.9
+143.47.40.252
+```
+
+Check the official [CloudPhone architecture documentation](https://developer.cloudfone.com/docs/guides/architecture/)
+when installing and periodically afterwards because CloudMosa says that more ranges may be added.
+Filter the actual connection source, not `X-Forwarded-For`: CloudMosa's
+[networking documentation](https://developer.cloudfone.com/docs/reference/networking/) says that
+header contains the phone user's IP rather than the CloudPhone processing server's IP.
+
+### Caddy or another reverse proxy
+
+For Caddy, replace the simple site from the previous section with the following. Add a trusted
+administrator IP to the `remote_ip` matcher only if you also need to open the public hostname from
+that address.
+
+```caddyfile
+chat.example.com {
+    @cloudphone {
+        remote_ip 203.116.120.0/24 203.116.121.0/24 203.116.134.0/24 203.208.133.0/24
+        remote_ip 45.33.136.0/22 45.33.140.0/22
+        remote_ip 129.151.177.210 129.151.168.109 129.151.182.81 129.151.161.66
+        remote_ip 129.151.172.12 129.151.166.100 129.151.183.189 129.151.168.167
+        remote_ip 84.8.136.215 84.8.138.38 84.8.138.97 84.8.140.68 84.8.132.90
+        remote_ip 79.72.56.168 79.72.60.209 79.72.59.11 143.47.37.176
+        remote_ip 143.47.33.53 143.47.55.9 143.47.40.252
+    }
+
+    handle @cloudphone {
+        reverse_proxy 127.0.0.1:8787
+    }
+
+    handle {
+        respond "Forbidden" 403
+    }
+}
+```
+
+For nginx, Traefik, or a NAS proxy, enter the same CIDRs and addresses in its source-IP allowlist.
+If another CDN or load balancer sits in front of the proxy, apply the rule there instead, or first
+configure the proxy to trust only that intermediary's source-address header.
+
+### Cloudflare Tunnel
+
+Cloudflare sees the original source address at its edge, so an allowlist works with a Tunnel even
+though `cloudflared` connects outbound from your server. In the Cloudflare dashboard, create an IP
+list containing the addresses above, then create a WAF custom rule for the DumbTalk hostname with
+an expression such as:
+
+```text
+(http.host eq "chat.example.com" and not ip.src in $cloudphone_servers)
+```
+
+Set the rule action to **Block**. Replace `cloudphone_servers` with the name of your Cloudflare IP
+list. See Cloudflare's official
+[IP allowlist rule guide](https://developers.cloudflare.com/waf/custom-rules/use-cases/allow-traffic-from-ips-in-allowlist/).
+
+### Tailscale Funnel
+
+The ordinary HTTP Funnel setup in option A cannot enforce this allowlist because the backend does
+not receive the original public source address. Advanced operators can use Funnel's PROXY protocol
+v2 mode with a compatible local proxy and apply the same ranges there. For a straightforward
+IP-restricted deployment, use Cloudflare Tunnel or a conventional reverse proxy instead.
+
+Apply the allowlist only after onboarding and testing the complete public URL. Once enabled, your
+ordinary browser will receive `403 Forbidden` from the public hostname unless its address is also
+allowed; you can still administer DumbTalk through its private LAN address and saved widget key.
+
+## 4. Build the CloudPhone widget URL
 
 After choosing a public address, keep the generated fragment from the claimed local address.
 
@@ -134,7 +246,7 @@ Open that complete URL from a device outside your home network, such as a phone 
 disabled. If it loads DumbTalk without showing a configuration error, CloudPhone's servers should
 also be able to reach it.
 
-## 4. Add it to CloudPhone
+## 5. Add it to CloudPhone
 
 1. Create an unpublished widget in the CloudPhone developer portal.
 2. Use the complete public URL, including the `#` access key, as the widget URL.

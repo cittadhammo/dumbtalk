@@ -113,6 +113,15 @@ Keep the host patched, expose only HTTPS, protect the complete widget URL, revie
 maintain tested encrypted backups. Security reports should avoid including tokens, credentials,
 messages, session databases, or logs containing personal data.
 
+### Can I restrict the public URL to CloudPhone's servers?
+
+Yes, and this is recommended as defence in depth wherever the public entry point supports it.
+CloudMosa publishes the data-centre IP ranges used to fetch widgets, so a reverse proxy or
+Cloudflare WAF rule can reject every other source before it reaches DumbTalk. Keep the widget token
+as well: the published ranges can change, and an IP allowlist is not a replacement for
+authentication. The [setup guide](docs/setup.md#3-restrict-access-to-cloudphones-servers) contains
+the current ranges and instructions for Caddy, Cloudflare Tunnel, and Tailscale Funnel.
+
 ### What happens if I lose the widget URL?
 
 The generated token remains in `data/app/config.json`. A server administrator can read it locally
