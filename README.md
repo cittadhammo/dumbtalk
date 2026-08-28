@@ -11,6 +11,20 @@ hide operations that a service does not support.
 
 DumbTalk is unofficial and is not affiliated with Signal, Telegram, WhatsApp, or CloudMosa.
 
+## Screenshots
+
+<table>
+  <tr>
+    <td align="center"><img src="docs/images/unified-inbox.png" alt="Unified inbox showing Signal, Telegram, and WhatsApp chats" width="240"><br><sub>Unified inbox</sub></td>
+    <td align="center"><img src="docs/images/whatsapp-conversation.png" alt="A WhatsApp conversation in DumbTalk" width="240"><br><sub>Conversation view</sub></td>
+    <td align="center"><img src="docs/images/message-actions.png" alt="Message reactions and actions in DumbTalk" width="240"><br><sub>Message actions</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/images/main-menu.png" alt="DumbTalk main menu" width="240"><br><sub>Main menu</sub></td>
+    <td align="center"><img src="docs/images/connected-services.png" alt="Signal, Telegram, and WhatsApp connected in DumbTalk" width="240"><br><sub>Connected services</sub></td>
+  </tr>
+</table>
+
 ## Get started
 
 You need a Linux x86-64 or ARM64 host with Docker Compose. Download the deployment file and start
