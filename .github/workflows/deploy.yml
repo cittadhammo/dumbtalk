@@ -54,23 +54,23 @@ jobs:
         run: |
           set -euo pipefail
           login_payload="$(jq -n \
-            --arg username "$DOCKERHUB_USERNAME" \
-            --arg password "$DOCKERHUB_TOKEN" \
-            '{username: $username, password: $password}')"
+            --arg identifier "$DOCKERHUB_USERNAME" \
+            --arg secret "$DOCKERHUB_TOKEN" \
+            '{identifier: $identifier, secret: $secret}')"
           hub_token="$(curl -fsS \
             -H 'content-type: application/json' \
             --data "$login_payload" \
-            https://hub.docker.com/v2/users/login/ | jq -er '.token')"
+            https://hub.docker.com/v2/auth/token | jq -er '.access_token')"
           repository_url="https://hub.docker.com/v2/repositories/$DOCKERHUB_USERNAME/dumbtalk/"
           status="$(curl -sS -o /dev/null -w '%{http_code}' \
-            -H "Authorization: JWT $hub_token" \
+            -H "Authorization: Bearer $hub_token" \
             "$repository_url")"
           if [ "$status" = 404 ]; then
             create_payload="$(jq -n \
               --arg namespace "$DOCKERHUB_USERNAME" \
               '{namespace: $namespace, name: "dumbtalk", description: "Self-hosted messaging for CloudPhone feature phones", is_private: false}')"
             curl -fsS \
-              -H "Authorization: JWT $hub_token" \
+              -H "Authorization: Bearer $hub_token" \
               -H 'content-type: application/json' \
               --data "$create_payload" \
               "https://hub.docker.com/v2/repositories/$DOCKERHUB_USERNAME/" >/dev/null
