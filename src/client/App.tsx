@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'preact/hooks';
-import { api, ApiError, claimInstallation, hasWidgetToken } from './api/client';
+import { api, ApiError, claimInstallation, hasConfiguredBackend, hasWidgetToken } from './api/client';
 import { FocusButton } from './components/FocusButton';
 import { ChatRoom } from './features/chat/ChatRoom';
 import {
@@ -9,6 +9,8 @@ import {
 	SearchScreen,
 	SettingsScreen,
 } from './features/app/AppScreens';
+import { ConnectScreen } from './features/connect/ConnectScreen';
+import { isKaiOS } from './kaios/env';
 import { ConversationList } from './features/conversations/ConversationList';
 import { ServicesScreen } from './features/services/ServicesScreen';
 import { FocusProvider, useFocusManager } from './platform/Focus';
@@ -65,10 +67,24 @@ type Screen =
 	| { name: 'settings' }
 	| { name: 'services' }
 	| { name: 'onboarding' }
+	| { name: 'connect' }
 	| { name: 'chat'; conversation: UniversalConversation; result?: UniversalSearchResult };
 
-function UnifiedApp() {
-	const [screen, setScreen] = useState<Screen>({ name: 'conversations', archived: false });
+function UnifiedApp({ connect = false, onConnected }: { connect?: boolean; onConnected?: () => void }) {
+	const [screen, setScreen] = useState<Screen>(() =>
+		connect ? { name: 'connect' } : { name: 'conversations', archived: false },
+	);
+
+	if (screen.name === 'connect') {
+		return (
+			<ConnectScreen
+				onConnected={() => {
+					if (onConnected) onConnected();
+					else setScreen({ name: 'conversations', archived: false });
+				}}
+			/>
+		);
+	}
 
 	if (screen.name === 'services') {
 		return (
@@ -153,11 +169,31 @@ function Boot() {
 	const [error, setError] = useState<string>();
 
 	const load = useCallback(() => {
-		if (!hasWidgetToken()) {
+		if (!hasConfiguredBackend() || !hasWidgetToken()) {
 			setError(undefined);
-			void claimInstallation().then(() => window.location.reload()).catch((reason: unknown) => {
-				setError(reason instanceof Error ? reason.message : 'Unable to set up DumbTalk');
-			});
+			setStatus(undefined);
+
+			if (isKaiOS() && hasConfiguredBackend()) {
+				// Backend URL is configured but the token is missing/expired;
+				// try a status probe so a stale token surfaces an actionable error.
+				void api<Status>('/api/status', { credentials: 'include' })
+					.then((next) => {
+						setStatus(next);
+						try {
+							localStorage.setItem(STATUS_CACHE_KEY, JSON.stringify({ savedAt: Date.now(), status: next }));
+						} catch {}
+					})
+					.catch((reason: unknown) =>
+						setError((reason as ApiError).message ?? 'Unable to reach the DumbTalk server.'),
+					);
+				return;
+			}
+
+			if (!isKaiOS()) {
+				void claimInstallation().then(() => window.location.reload()).catch((reason: unknown) => {
+					setError(reason instanceof Error ? reason.message : 'Unable to set up DumbTalk');
+				});
+			}
 			return;
 		}
 
@@ -181,6 +217,13 @@ function Boot() {
 		const timer = window.setTimeout(load, 2_000);
 		return () => window.clearTimeout(timer);
 	}, [load, status]);
+
+	// On KaiOS the app is a standalone package without a widget URL. If the
+	// backend hasn't been configured yet, present the Connect screen so the
+	// user can enter the server address and authorization token.
+	if (isKaiOS() && !hasConfiguredBackend()) {
+		return <UnifiedApp connect onConnected={load} />;
+	}
 
 	if (error) {
 		return <ErrorScreen message={error} retry={load} />;

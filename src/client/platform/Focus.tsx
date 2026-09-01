@@ -76,6 +76,18 @@ export function FocusProvider({ children }: { children: ComponentChildren }) {
 		};
 
 		const onKeyDown = (event: KeyboardEvent) => {
+			if (event.key === 'Enter') {
+				// KaiOS D-pad centre / Enter should activate the focused element.
+				// Guard: inputs handle Enter themselves (forms/search/submit).
+				const active = activeId.current ? items.current.get(activeId.current) : undefined;
+				const target = active?.element;
+				if (target && !(target instanceof HTMLInputElement) && !(target instanceof HTMLTextAreaElement)) {
+					event.preventDefault();
+					target.click();
+				}
+				return;
+			}
+
 			if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.key)) return;
 
 			const arrow = event.key as ArrowKey;

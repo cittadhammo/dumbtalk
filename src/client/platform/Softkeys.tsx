@@ -60,11 +60,20 @@ export function SoftkeyProvider({ children }: { children: ComponentChildren }) {
 			action?.onPress();
 		};
 
+		const onBack = (event: Event) => {
+			event.preventDefault();
+			invoke('right');
+		};
+
+		// KaiOS hardware Back key maps to the Backspace key code (and also
+		// dispatches a `back` custom event on newer runtimes). Both route to
+		// the current screen's right-hand soft key, which every screen uses as
+		// its Back action — navigating instead of closing the app.
 		const onKeyDown = (event: KeyboardEvent) => {
 			const key: Softkey | undefined =
 				event.code === 'ShiftLeft' || event.key === 'SoftLeft' || event.key === 'Escape'
 					? 'left'
-					: event.code === 'ShiftRight' || event.key === 'SoftRight'
+					: event.code === 'ShiftRight' || event.key === 'SoftRight' || event.key === 'Backspace'
 						? 'right'
 						: undefined;
 
@@ -72,11 +81,6 @@ export function SoftkeyProvider({ children }: { children: ComponentChildren }) {
 
 			event.preventDefault();
 			invoke(key);
-		};
-
-		const onBack = (event: Event) => {
-			event.preventDefault();
-			invoke('right');
 		};
 
 		window.addEventListener('keydown', onKeyDown);
@@ -87,10 +91,10 @@ export function SoftkeyProvider({ children }: { children: ComponentChildren }) {
 		};
 	}, []);
 
-	return (
+		return (
 		<SoftkeyContext.Provider value={contextValue}>
 			{children}
-			<nav class={styles.bar} aria-label="Soft keys">
+			<nav class={styles.bar} data-softkey-bar aria-label="Soft keys">
 				<button class={styles.button} type="button" onClick={config.left?.onPress}>
 					{config.left?.label ?? ''}
 				</button>

@@ -1,0 +1,41 @@
+/*
+ * Gecko 48 (KaiOS 2.5) overrides.
+ *
+ * CSS Grid was only shipped in Firefox 52, so on KaiOS 2.5 every `display:
+ * grid` degrades to a block stack. That is acceptable fallback behaviour for
+ * a QVGA D-pad interface, but a few layout-specific tweaks below keep the
+ * soft-key bar and the app shell usable without grids.
+ */
+
+html.kaios body {
+	max-width: 100%;
+}
+
+/* KaiOS renders the soft-key bar natively when the app region is used, but we
+ * render our own three-column bar. Without grid support, force the buttons
+ * back into a single row with table layout (widely supported in FF48). */
+html.kaios [data-softkey-bar] {
+	display: table;
+	width: 100%;
+}
+
+html.kaios [data-softkey-bar] button {
+	display: table-cell;
+}
+
+/* The app shell is height-constrained. Without grid, ensure the scrollable
+ * region still fills the viewport above the fixed soft-key bar. */
+html.kaios #app {
+	height: 100%;
+	display: block;
+	overflow: auto;
+}
+
+/* CSS variables (used by theme tokens only at compile time) are fine, but a
+ * few layouts set explicit heights; when grids are unavailable, let screens
+ * grow naturally and keep section headers anchored. */
+html.kaios main > header {
+	position: sticky;
+	top: 0;
+	z-index: 1;
+}

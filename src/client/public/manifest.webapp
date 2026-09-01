@@ -1,0 +1,21 @@
+{
+	"name": "DumbTalk",
+	"description": "DumbTalk KaiOS 2.5 client for your self-hosted unified messaging server.",
+	"launch_path": "/index.html",
+	"type": ["privileged"],
+	"icons": {
+		"120": "/dumbtalk.png",
+		"160": "/dumbtalk.png"
+	},
+	"developer": {
+		"name": "DumbTalk",
+		"url": ""
+	},
+	"permissions": {
+		"systemXHR": {
+			"description": "Required to communicate with self-hosted DumbTalk backend API"
+		}
+	},
+	"orientation": "portrait-primary",
+	"fullscreen": true
+}

@@ -1,5 +1,6 @@
 import type { ComponentChildren } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
+import { api } from '../../api/client';
 import { FocusButton } from '../../components/FocusButton';
 import { FocusInput } from '../../components/FocusInput';
 import { AppIcon } from '../../components/AppIcon';
@@ -13,6 +14,12 @@ import type {
 	UniversalSearchResult,
 	UniversalSettings,
 } from '../../services/contracts';
+import {
+	backendOrigin,
+	isKaiOS,
+	normalizeBackendUrl,
+	saveBackend,
+} from '../../kaios/env';
 import styles from './AppScreens.module.scss';
 
 type BackProps = { onBack: () => void };
@@ -45,7 +52,7 @@ function ServiceChooser({
 
 function ScreenFrame({ title, children }: { title: string; children: ComponentChildren }) {
 	return (
-		<main class={styles.screen}>
+		<main class={styles.screen} data-screen>
 			<header>{title}</header>
 			<section class={styles.content}>{children}</section>
 		</main>
@@ -349,6 +356,66 @@ const expirationOptions = [
 	{ value: 2592000, label: '30 days' },
 ];
 
+function DumbTalkServerSettings({ onSaved }: { onSaved: () => void }) {
+	const [url, setUrl] = useState(backendOrigin());
+	const [token, setToken] = useState('');
+	const [saving, setSaving] = useState(false);
+	const [error, setError] = useState<string>();
+	const [saved, setSaved] = useState(false);
+
+	const apply = () => {
+		const base = normalizeBackendUrl(url);
+		if (!base || !token.trim()) {
+			setError('Enter the server address and authorization token.');
+			return;
+		}
+		setError(undefined);
+		setSaving(true);
+		saveBackend({ url: base, token: token.trim() });
+		void api<{ ok?: boolean }>('/api/status')
+			.then(() => {
+				setSaved(true);
+				setTimeout(onSaved, 600);
+			})
+			.catch((reason: unknown) =>
+				setError(reason instanceof Error ? reason.message : 'Server unreachable'),
+			)
+			.finally(() => setSaving(false));
+	};
+
+	return (
+		<>
+			<p class={styles.heading}><AppIcon name="settings" /> DumbTalk server</p>
+			<div class={styles.results}>
+				<label class={styles.settingRow}>
+					<span>Server address</span>
+					<FocusInput
+						id="dumbtalk-server-url"
+						value={url}
+						inputMode="url"
+						placeholder="https://chat.example.com"
+						onInput={(event) => setUrl(event.currentTarget.value)}
+					/>
+				</label>
+				<label class={styles.settingRow}>
+					<span>Authorization token</span>
+					<FocusInput
+						id="dumbtalk-server-token"
+						value={token}
+						placeholder="Paste the widget URL or its #token"
+						onInput={(event) => setToken(event.currentTarget.value)}
+					/>
+				</label>
+			</div>
+			{error && <p class={styles.error}>{error}</p>}
+			{saved && <p class={styles.error}>Saved. Reconnecting…</p>}
+			<FocusButton id="dumbtalk-server-save" class={styles.primary} disabled={saving} onClick={apply}>
+				{saving ? 'Testing…' : 'Save & reconnect'}
+			</FocusButton>
+		</>
+	);
+}
+
 export function SettingsScreen({ onBack }: BackProps) {
 	const { services } = useMessagingServices();
 	const [serviceId, setServiceId] = useState<string>();
@@ -384,6 +451,7 @@ export function SettingsScreen({ onBack }: BackProps) {
 				selected={service?.id}
 				onSelect={(selected) => setServiceId(selected.id)}
 			/>
+			{isKaiOS() && <DumbTalkServerSettings onSaved={onBack} />}
 			{!settings && !error && <p>Loading…</p>}
 			{settings && (
 				<>

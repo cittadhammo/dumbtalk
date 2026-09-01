@@ -166,6 +166,30 @@
 
 .settingsList button > span:first-child { flex: 1; }
 
+.settingRow {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	padding: 7px 9px;
+	background: linear-gradient(145deg, #1b342b, #12251f);
+	border: 1px solid #345449;
+	border-radius: 8px;
+	color: tokens.$muted;
+	font-size: 10px;
+}
+
+.settingRow input {
+	width: 100%;
+	min-width: 0;
+	height: 30px;
+	padding: 5px 7px;
+	background: #0d1c17;
+	border: 1px solid #38574c;
+	border-radius: 6px;
+	color: tokens.$text;
+	font-size: 11px;
+}
+
 .switch {
 	min-width: 30px;
 	padding: 2px 5px;
